@@ -26,7 +26,7 @@ Most AI coding assistants are either embedded in heavy IDEs (like Cursor, Copilo
 
 ```bash
 # Download, make executable, and install in one go
-curl -s https://raw.githubusercontent.com/yourusername/aifixer/main/aifixer.py | sudo tee /usr/local/bin/aifixer >/dev/null && sudo chmod +x /usr/local/bin/aifixer
+curl -s https://raw.githubusercontent.com/bradflaugjer/aifixer/main/aifixer.py | sudo tee /usr/local/bin/aifixer >/dev/null && sudo chmod +x /usr/local/bin/aifixer
 ```
 
 ### From PyPI (Coming Soon)
