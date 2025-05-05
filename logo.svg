@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 300">
+  <!-- Background -->
+  <rect width="600" height="300" fill="#121212" rx="0" ry="0"/>
+  
+  <!-- Terminal Window -->
+  <rect x="50" y="50" width="500" height="200" rx="6" ry="6" fill="#1E1E2E" stroke="#33FF99" stroke-width="1.5"/>
+  
+  <!-- Terminal Header -->
+  <rect x="50" y="50" width="500" height="26" rx="6" ry="6" fill="#2E2E40"/>
+  <rect x="50" y="76" width="500" height="1" fill="#121212"/>
+  
+  <!-- Terminal Header Buttons -->
+  <circle cx="70" cy="63" r="6" fill="#FF5F56"/>
+  <circle cx="90" cy="63" r="6" fill="#FFBD2E"/>
+  <circle cx="110" cy="63" r="6" fill="#27C93F"/>
+  
+  <!-- Terminal Header Title -->
+  <text x="300" y="68" font-family="'Courier New', monospace" font-size="14" fill="#CCCCCC" text-anchor="middle">terminal</text>
+  
+  <!-- Command Line - Each element separately positioned with ample space -->
+  <text x="70" y="110" font-family="'Courier New', monospace" font-size="14" fill="#CCCCCC">$</text>
+  <text x="90" y="110" font-family="'Courier New', monospace" font-size="14" fill="#CCCCCC">cat</text>
+  <text x="120" y="110" font-family="'Courier New', monospace" font-size="14" fill="#33FF99">todo.js</text>
+  <text x="190" y="110" font-family="'Courier New', monospace" font-size="14" fill="#CCCCCC">|</text>
+  <text x="210" y="110" font-family="'Courier New', monospace" font-size="14" fill="#33FF99">aifixer</text>
+  <text x="280" y="110" font-family="'Courier New', monospace" font-size="14" fill="#CCCCCC">></text>
+  <text x="300" y="110" font-family="'Courier New', monospace" font-size="14" fill="#33FF99">fixed.js</text>
+  
+  <!-- Output Lines -->
+  <text x="70" y="150" font-family="'Courier New', monospace" font-size="14" fill="#999999">Found 3 TODOs to implement...</text>
+  
+  <!-- Progress Bar -->
+  <rect x="70" y="170" width="300" height="16" rx="3" ry="3" fill="#2A2A3C"/>
+  <rect x="70" y="170" width="210" height="16" rx="3" ry="3" fill="#33FF99">
+    <animate attributeName="width" values="0;60;120;180;210" dur="2s" repeatCount="1" fill="freeze"/>
+  </rect>
+  <text x="85" y="183" font-family="'Courier New', monospace" font-size="12" fill="#121212">Implementing solutions...</text>
+  
+  <!-- Completion Message -->
+  <text x="70" y="205" font-family="'Courier New', monospace" font-size="14" fill="#33FF99">✓ Fixed 3 TODOs in 0.8s</text>
+  
+  <!-- Cursor -->
+  <rect x="70" y="225" width="8" height="16" fill="#33FF99">
+    <animate attributeName="opacity" values="1;0;1" dur="1s" repeatCount="indefinite"/>
+  </rect>
+  
+  <!-- AIFixer Text Logo -->
+  <g transform="translate(300, 275)">
+    <text font-family="'Courier New', monospace" font-size="20" font-weight="bold" fill="#FFFFFF" text-anchor="middle">
+      <tspan>AI</tspan>
+      <tspan fill="#33FF99">Fixer</tspan>
+    </text>
+  </g>
+</svg>
