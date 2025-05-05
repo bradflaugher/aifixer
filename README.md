@@ -1,5 +1,9 @@
 # AIFixer
 
+<p align="center">
+  <img src="./logo.svg" alt="AIFixer" width="600">
+</p>
+
 AIFixer is a lightweight, blazing-fast command-line tool that harnesses AI to enhance your coding workflow without ever leaving the terminal. Perfect for CLI enthusiasts, vim/emacs power users, and developers who prefer focused tools over bloated IDEs.
 
 ## Why AIFixer?
