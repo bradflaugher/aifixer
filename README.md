@@ -11,8 +11,8 @@ AIFixer is a lightweight, blazing-fast command-line tool that harnesses AI to en
 Most AI coding assistants are either embedded in heavy IDEs (like Cursor, Copilot, or CodeGPT) or require context switching to web interfaces (Claude, ChatGPT). AIFixer brings AI coding superpowers directly to your terminal workflow:
 
 - **Terminal-native** - No browser tabs, no GUI apps, just pure CLI efficiency
-- **Cheap** - Claude Code is awesome, but boy can it get expensive. AIFixer can use Claude models when needed OR free models from OpenRouter (local models too if you're fancy) to fix easier problems, and you can control the context that you send to the LLM, which helps save money on input tokens.
 - **Blazing fast** - Get AI-powered code fixes in seconds
+- **Cost-effective** - While Claude Code is powerful, it can strain your budget. AIFixer lets you choose between powerful cloud models for complex tasks or economical/free alternatives for simpler fixes. By controlling exactly what context you send, you minimize token usage and maximize value—perfect for developers mindful of API costs.​​​​​​​​​​​​​​​​
 - **Universal** - Works with any programming language or framework
 - **Composable** - Follows the Unix philosophy: do one thing well and work with other tools
 - **BYOM (Bring Your Own Model)** - Use ANY model from:
