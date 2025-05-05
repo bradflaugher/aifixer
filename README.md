@@ -29,7 +29,7 @@ Most AI coding assistants are either embedded in heavy IDEs (like Cursor, Copilo
 curl -s https://raw.githubusercontent.com/yourusername/aifixer/main/aifixer.py | sudo tee /usr/local/bin/aifixer >/dev/null && sudo chmod +x /usr/local/bin/aifixer
 ```
 
-### From PyPI (Recommended)
+### From PyPI (Coming Soon)
 
 ```bash
 pip install aifixer
