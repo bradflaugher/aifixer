@@ -123,7 +123,8 @@ def spinner(message: str):
 
 # ─── Model Listing & Selection ───────────────────────────────────────────────────
 def get_free_models(session: requests.Session, sort_key: str = "price") -> List[str]:
-    """Return a list of free/cheap model IDs from OpenRouter, sorted by the given criteria."""
+    """Return a list of free/cheap model IDs from OpenRouter, sorted by the given criteria.
+    Ensures diversity of model providers to avoid all-Gemini fallbacks."""
     url = f"{OPENROUTER_URL}/models"
     try:
         resp = session.get(url, timeout=REQUEST_TIMEOUT)
@@ -151,15 +152,29 @@ def get_free_models(session: requests.Session, sort_key: str = "price") -> List[
         -m.get("context_length", 0)
     ))
     
-    # Take the first few as "free/cheap" models
-    free_models = models[:5]  # Get top 5 cheapest models
+    # Get diverse models - we want different providers to avoid all-Gemini fallbacks
+    result = []
+    providers_seen = set()
     
-    if not free_models:
+    for m in models:
+        # Extract provider from model ID (e.g., "google" from "google/gemini-...")
+        provider = m["id"].split("/")[0] if "/" in m["id"] else "unknown"
+        
+        # Only add first model from each provider to ensure diversity
+        if provider not in providers_seen or len(result) < 2:
+            result.append(m["id"])
+            providers_seen.add(provider)
+        
+        # Stop when we have enough models
+        if len(result) >= 5:
+            break
+    
+    if not result:
         logger.warning("No models found with pricing information")
         return []
         
-    logger.debug(f"Selected top models: {[m['id'] for m in free_models]}")
-    return [m["id"] for m in free_models]
+    logger.debug(f"Selected diverse models: {result}")
+    return result
 
 
 def fetch_openrouter_models(
@@ -274,11 +289,15 @@ def process_with_openrouter(
     url = f"{OPENROUTER_URL}/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     
-    # Use the full model name exactly as provided, just like the original code
-    current_model = model
-    payload = {"model": current_model, "messages": [{"role": "user", "content": p}]}
+    # Use simple payload structure - only include parameters defined in OpenRouter docs
+    # Avoid limiting max_tokens to let the model produce full output
+    payload = {
+        "model": model, 
+        "messages": [{"role": "user", "content": p}],
+        "temperature": 0.7  # Good balance for code generation
+    }
     
-    logger.debug(f"Using model: {current_model}")
+    logger.debug(f"Using model: {model}")
 
     try:
         resp = session.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
@@ -287,14 +306,19 @@ def process_with_openrouter(
         return extract_fixed_file(content) if fix_only else content
     
     except Exception as e:
-        error_msg = f"Error with model {current_model}: {e}"
+        error_msg = f"Error with model {model}: {e}"
+        error_details = ""
+        try:
+            error_details = resp.text[:300]
+        except:
+            pass
         
         # If we have retry models, attempt them in sequence
         if retry_models:
             logger.warning(f"{error_msg} - Trying fallback models...")
             
             for fallback_model in retry_models:
-                if fallback_model == current_model:
+                if fallback_model == model:
                     continue  # Skip the one we just tried
                 
                 logger.info(f"Trying fallback model: {fallback_model}")
@@ -314,11 +338,9 @@ def process_with_openrouter(
             logger.error("All models failed. Last error:")
         
         # Print detailed error for the last attempt
-        try:
-            logger.error(f"OpenRouter error ({resp.status_code}): {e}")
-            logger.error(f"Response content: {resp.text[:200]}...")
-        except:
-            logger.error(f"OpenRouter error: {e}")
+        logger.error(f"OpenRouter error: {e}")
+        if error_details:
+            logger.error(f"Response content: {error_details}")
         
         sys.exit(1)
 
