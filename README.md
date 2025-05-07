@@ -57,11 +57,17 @@ AIFixer requires Python and the `requests` library:
 # Debian/Ubuntu
 sudo apt install python3-requests
 
+# Fedora/RHEL/CentOS
+sudo dnf install python3-requests
+
+# Arch Linux
+sudo pacman -S python-requests
+
+# OpenSUSE
+sudo zypper install python3-requests
+
 # Other Linux/Mac with pip
 pip install requests   # or pip3 install requests on some systems
-
-# For Windows users
-# See WINDOWS.md for detailed setup instructions
 ```
 
 ### Install AIFixer
