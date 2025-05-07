@@ -279,12 +279,8 @@ def process_with_openrouter(
     input_text: str,
     fix_only: bool,
     target_file: Optional[str],
-    retry_models: Optional[List[str]] = None,
 ) -> str:
-    """Send prompt+input to OpenRouter and return AI response (or fixed code).
-    
-    If retry_models is provided, will attempt those models in order on failure.
-    """
+    """Send prompt+input to OpenRouter and return AI response (or fixed code)."""
     p = build_fix_prompt(prompt, fix_only, target_file) + input_text
     url = f"{OPENROUTER_URL}/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
@@ -299,50 +295,10 @@ def process_with_openrouter(
     
     logger.debug(f"Using model: {model}")
 
-    try:
-        resp = session.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
-        resp.raise_for_status()
-        content = resp.json()["choices"][0]["message"]["content"]
-        return extract_fixed_file(content) if fix_only else content
-    
-    except Exception as e:
-        error_msg = f"Error with model {model}: {e}"
-        error_details = ""
-        try:
-            error_details = resp.text[:300]
-        except:
-            pass
-        
-        # If we have retry models, attempt them in sequence
-        if retry_models:
-            logger.warning(f"{error_msg} - Trying fallback models...")
-            
-            for fallback_model in retry_models:
-                if fallback_model == model:
-                    continue  # Skip the one we just tried
-                
-                logger.info(f"Trying fallback model: {fallback_model}")
-                payload["model"] = fallback_model
-                
-                try:
-                    resp = session.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
-                    resp.raise_for_status()
-                    content = resp.json()["choices"][0]["message"]["content"]
-                    logger.info(f"✓ Fallback model {fallback_model} succeeded")
-                    return extract_fixed_file(content) if fix_only else content
-                except Exception as fallback_e:
-                    logger.warning(f"Fallback model {fallback_model} failed: {fallback_e}")
-                    continue  # Try the next model in the list
-            
-            # If we get here, all fallbacks failed
-            logger.error("All models failed. Last error:")
-        
-        # Print detailed error for the last attempt
-        logger.error(f"OpenRouter error: {e}")
-        if error_details:
-            logger.error(f"Response content: {error_details}")
-        
-        sys.exit(1)
+    resp = session.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
+    resp.raise_for_status()
+    content = resp.json()["choices"][0]["message"]["content"]
+    return extract_fixed_file(content) if fix_only else content
 
 
 def process_with_ollama(
@@ -486,28 +442,63 @@ def main() -> None:
         sys.exit(1)
 
     start_time = time.time()
+    current_model = args.model  # Track the current model being used
+    
     try:
         if args.ollama_model:
-            with spinner(f"Processing via Ollama ({args.ollama_model})…"):
+            current_model = args.ollama_model
+            with spinner(f"Processing via Ollama ({current_model})…"):
                 result = process_with_ollama(
-                    session, args.ollama_model, args.prompt,
+                    session, current_model, args.prompt,
                     input_text, args.fix_file_only, args.target_file
                 )
         else:
-            with spinner(f"Processing via OpenRouter ({args.model})…"):
-                result = process_with_openrouter(
-                    session, api_key, args.model, args.prompt,
-                    input_text, args.fix_file_only, args.target_file,
-                    retry_models=fallback_models
-                )
+            # Initial attempt with primary model
+            try:
+                with spinner(f"Processing via OpenRouter ({current_model})…"):
+                    result = process_with_openrouter(
+                        session, api_key, current_model, args.prompt,
+                        input_text, args.fix_file_only, args.target_file
+                    )
+            except Exception as e:
+                # If primary model fails and we have fallbacks, try them
+                if fallback_models:
+                    logger.warning(f"Error with model {current_model}: {e} - Trying fallback models...")
+                    
+                    # Try each fallback model in sequence
+                    for model_id in fallback_models:
+                        current_model = model_id  # Update current model for correct display
+                        try:
+                            logger.info(f"Trying fallback model: {current_model}")
+                            with spinner(f"Processing via OpenRouter ({current_model})…"):
+                                result = process_with_openrouter(
+                                    session, api_key, current_model, args.prompt,
+                                    input_text, args.fix_file_only, args.target_file
+                                )
+                            logger.info(f"✓ Fallback model {current_model} succeeded")
+                            break  # Success! Exit the loop
+                        except Exception as fallback_e:
+                            logger.warning(f"Fallback model {current_model} failed: {fallback_e}")
+                            continue  # Try the next model
+                    else:
+                        # If we get here, all fallbacks failed
+                        logger.error("All models failed")
+                        raise e  # Re-raise the original error
+                else:
+                    # No fallbacks available, re-raise the error
+                    raise
+                
     except KeyboardInterrupt:
         logger.warning("Operation cancelled by user.")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Error: {e}")
         sys.exit(1)
 
     # Show completion message with timing
     elapsed = time.time() - start_time
     if sys.stderr.isatty():
-        logger.info(f"Completed in {elapsed:.1f}s ✓")
+        logger.info(f"Completed in {elapsed:.1f}s with {current_model} ✓")
 
     # AI output → stdout (for piping)
     sys.stdout.write(result)
