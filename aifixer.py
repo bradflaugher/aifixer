@@ -133,30 +133,34 @@ def get_free_models(session: requests.Session, sort_key: str = "price") -> List[
         logger.error("Could not fetch OpenRouter models: %s", e)
         sys.exit(1)
 
-    # filter to get only free models
+    # filter to get only free models - check for zero or very close to zero pricing
+    # (sometimes API returns very small numbers like 1e-10 instead of exactly 0)
     free_models = [
         m for m in data
         if m.get("pricing") and m.get("id") != "openrouter/auto" 
-        and m.get("pricing", {}).get("prompt", float("inf")) == 0
+        and m.get("pricing", {}).get("prompt", float("inf")) < 0.0001
     ]
+    
+    # If no models meet the strict "free" criteria, check for very cheap ones
+    if not free_models:
+        logger.warning("No completely free models found. Looking for cheap models instead.")
+        free_models = [
+            m for m in data
+            if m.get("pricing") and m.get("id") != "openrouter/auto" 
+            and m.get("pricing", {}).get("prompt", float("inf")) < 0.001
+        ]
     
     # Sort models using the specified criteria
     sorters = {
-        "price": lambda m: (-m.get("context_length", 0)),  # For free models, sort by context length
-        "best":  lambda m: (-m.get("context_length", 0)),  # Same as above for free models
+        "price": lambda m: (m["pricing"].get("prompt", float("inf")), -m.get("context_length", 0)),
+        "best":  lambda m: (-m.get("context_length", 0)),  # For cheap models, context length is key
         "context": lambda m: (-int(m.get("context_length", 0))),
     }
     free_models.sort(key=sorters[sort_key])
     
-    # Return full model IDs including :free suffix if needed
-    result = []
-    for m in free_models:
-        model_id = m["id"]
-        if not model_id.endswith(":free"):
-            model_id = f"{model_id}:free"
-        result.append(model_id)
-    
-    return result
+    # Just return the model IDs exactly as they appear in the API
+    # Do NOT modify them by adding :free suffix - the API handles this automatically
+    return [m["id"] for m in free_models]
 
 
 def fetch_openrouter_models(
