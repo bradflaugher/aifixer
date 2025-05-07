@@ -123,7 +123,7 @@ def spinner(message: str):
 
 # ─── Model Listing & Selection ───────────────────────────────────────────────────
 def get_free_models(session: requests.Session, sort_key: str = "price") -> List[str]:
-    """Return a list of free model IDs from OpenRouter, sorted by the given criteria."""
+    """Return a list of free/cheap model IDs from OpenRouter, sorted by the given criteria."""
     url = f"{OPENROUTER_URL}/models"
     try:
         resp = session.get(url, timeout=REQUEST_TIMEOUT)
@@ -133,33 +133,32 @@ def get_free_models(session: requests.Session, sort_key: str = "price") -> List[
         logger.error("Could not fetch OpenRouter models: %s", e)
         sys.exit(1)
 
-    # filter to get only free models - check for zero or very close to zero pricing
-    # (sometimes API returns very small numbers like 1e-10 instead of exactly 0)
-    free_models = [
+    # Log all models for debugging
+    if logger.level <= logging.DEBUG:
+        for m in data:
+            if m.get("pricing"):
+                logger.debug(f"Model: {m['id']}, Prompt: {m['pricing'].get('prompt')}")
+
+    # Just get all models with pricing info, sorted by price
+    models = [
         m for m in data
-        if m.get("pricing") and m.get("id") != "openrouter/auto" 
-        and m.get("pricing", {}).get("prompt", float("inf")) < 0.0001
+        if m.get("pricing") and m.get("id") != "openrouter/auto"
     ]
     
-    # If no models meet the strict "free" criteria, check for very cheap ones
+    # Sort by price (lowest first)
+    models.sort(key=lambda m: (
+        m["pricing"].get("prompt", float("inf")), 
+        -m.get("context_length", 0)
+    ))
+    
+    # Take the first few as "free/cheap" models
+    free_models = models[:5]  # Get top 5 cheapest models
+    
     if not free_models:
-        logger.warning("No completely free models found. Looking for cheap models instead.")
-        free_models = [
-            m for m in data
-            if m.get("pricing") and m.get("id") != "openrouter/auto" 
-            and m.get("pricing", {}).get("prompt", float("inf")) < 0.001
-        ]
-    
-    # Sort models using the specified criteria
-    sorters = {
-        "price": lambda m: (m["pricing"].get("prompt", float("inf")), -m.get("context_length", 0)),
-        "best":  lambda m: (-m.get("context_length", 0)),  # For cheap models, context length is key
-        "context": lambda m: (-int(m.get("context_length", 0))),
-    }
-    free_models.sort(key=sorters[sort_key])
-    
-    # Just return the model IDs exactly as they appear in the API
-    # Do NOT modify them by adding :free suffix - the API handles this automatically
+        logger.warning("No models found with pricing information")
+        return []
+        
+    logger.debug(f"Selected top models: {[m['id'] for m in free_models]}")
     return [m["id"] for m in free_models]
 
 
@@ -366,6 +365,7 @@ def main() -> None:
     # Global flags
     parser.add_argument("--version", action="version", version=VERSION)
     parser.add_argument("--help-examples", action="store_true")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose debugging output")
 
     # Model selection
     mg = parser.add_argument_group("Model Selection")
@@ -392,6 +392,12 @@ def main() -> None:
     parser.add_argument("text", nargs="*", help="Input text (or use stdin)")
 
     args = parser.parse_args()
+    
+    # Set up logging level based on verbose flag
+    if args.verbose:
+        logger.setLevel(logging.DEBUG)
+        logger.debug("Debug logging enabled")
+    
     session = requests.Session()
 
     # Examples, listings, etc.
@@ -420,18 +426,18 @@ def main() -> None:
     # Free model auto‑select with fallbacks
     fallback_models = []
     if args.free and not args.ollama_model:
-        with spinner("Selecting free models…"):
+        with spinner("Selecting free/cheap models…"):
             free_models = get_free_models(session, sort_key=args.sort_by)
             
         if not free_models:
-            logger.error("No free models found")
+            logger.error("No free/cheap models found")
             sys.exit(1)
             
         # Set primary model and keep others as fallbacks
         args.model = free_models[0]
         fallback_models = free_models[1:args.max_fallbacks+1]  # Limit fallbacks
         
-        logger.info(f"Selected free model: {args.model}")
+        logger.info(f"Selected model: {args.model}")
         if fallback_models:
             logger.info(f"Fallback models: {', '.join(fallback_models)}")
 
