@@ -22,17 +22,6 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1"
 OLLAMA_URL = "http://localhost:11434/api"
 REQUEST_TIMEOUT = 10  # seconds
 
-ASCII_BANNER = r"""
-    _    ___ _____ _                 
-   / \  |_ _|  ___(_)_  _____ _ __ 
-  / _ \  | || |_  | \ \/ / _ \ '__|
- / ___ \ | ||  _| | |>  <  __/ |   
-/_/   \_\___|_|   |_/_/\_\___|_|   
-                                    
- Your terminal-native AI coding assistant
---------------------------------------------
-"""
-
 # ─── Setup Logging ─────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -134,7 +123,7 @@ def spinner(message: str):
 
 # ─── Model Listing & Selection ───────────────────────────────────────────────────
 def get_free_model(session: requests.Session, sort_key: str = "price") -> Optional[str]:
-    """Return the ID of the free/cheapest model from OpenRouter."""
+    """Return the ID of the free/cheapest model from OpenRouter, preserving any :free suffix."""
     url = f"{OPENROUTER_URL}/models"
     try:
         resp = session.get(url, timeout=REQUEST_TIMEOUT)
@@ -157,7 +146,13 @@ def get_free_model(session: requests.Session, sort_key: str = "price") -> Option
     models.sort(key=sorters[sort_key])
     
     if models:
-        return models[0]["id"]
+        # Return the model ID and ensure it has the :free suffix if it's a free model
+        model_id = models[0]["id"]
+        if models[0]["pricing"].get("prompt", 0) == 0:
+            # Only add :free suffix if it's not already there
+            if not model_id.endswith(":free"):
+                model_id = f"{model_id}:free"
+        return model_id
     return None
 
 
@@ -268,14 +263,25 @@ def process_with_openrouter(
     p = build_fix_prompt(prompt, fix_only, target_file) + input_text
     url = f"{OPENROUTER_URL}/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    payload = {"model": model, "messages": [{"role": "user", "content": p}]}
+    
+    # Handle model format - some models require special handling for :free suffix
+    # For API requests, we need to use base model without suffix in some cases
+    base_model = model.split(":")[0] if ":free" in model else model
+    logger.debug(f"Using model: {base_model} (original: {model})")
+    
+    payload = {"model": base_model, "messages": [{"role": "user", "content": p}]}
 
     resp = session.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
     try:
         resp.raise_for_status()
         content = resp.json()["choices"][0]["message"]["content"]
     except Exception as e:
-        logger.error("OpenRouter error (%s): %s", resp.status_code, e)
+        logger.error(f"OpenRouter error ({resp.status_code}): {e}")
+        try:
+            # Try to provide more helpful debug info
+            logger.error(f"Response content: {resp.text[:200]}...")
+        except:
+            pass
         sys.exit(1)
     return extract_fixed_file(content) if fix_only else content
 
@@ -308,13 +314,9 @@ def process_with_ollama(
 
 
 # ─── CLI & Main ───────────────────────────────────────────────────────────────
-def print_banner() -> None:
-    """Show ASCII art only if terminal is wide enough."""
-    try:
-        width = shutil.get_terminal_size().columns
-    except OSError:
-        width = 80
-    print(ASCII_BANNER if width >= 50 else f"AIFixer v{VERSION}", file=sys.stderr)
+def print_version() -> None:
+    """Print a simple version message."""
+    print(f"AIFixer v{VERSION}", file=sys.stderr)
 
 
 def main() -> None:
@@ -371,6 +373,10 @@ def main() -> None:
         fetch_ollama_models(session)
         return
 
+    # Print a simple version message for interactive use
+    if sys.stderr.isatty():
+        print_version()
+
     # Free model auto‑select - FIXED: Use the new function and log to stderr
     if args.free and not args.ollama_model:
         with spinner("Selecting free model…"):
@@ -398,16 +404,13 @@ def main() -> None:
         print(out)
         return
 
-    # Interactive banner & update check
-    if sys.stderr.isatty():  # Changed from stdout to stderr for consistency
-        print_banner()
-
     # Process
     api_key = os.getenv("OPENROUTER_API_KEY", "")
     if not args.ollama_model and not api_key:
         logger.error("OPENROUTER_API_KEY not set; export it and retry.")
         sys.exit(1)
 
+    start_time = time.time()
     try:
         if args.ollama_model:
             with spinner(f"Processing via Ollama ({args.ollama_model})…"):
@@ -424,6 +427,11 @@ def main() -> None:
     except KeyboardInterrupt:
         logger.warning("Operation cancelled by user.")
         sys.exit(1)
+
+    # Show completion message with timing
+    elapsed = time.time() - start_time
+    if sys.stderr.isatty():
+        logger.info(f"Completed in {elapsed:.1f}s ✓")
 
     # AI output → stdout (for piping)
     sys.stdout.write(result)
