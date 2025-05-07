@@ -264,12 +264,11 @@ def process_with_openrouter(
     url = f"{OPENROUTER_URL}/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     
-    # Handle model format - some models require special handling for :free suffix
-    # For API requests, we need to use base model without suffix in some cases
-    base_model = model.split(":")[0] if ":free" in model else model
-    logger.debug(f"Using model: {base_model} (original: {model})")
+    # Use the full model name exactly as provided, just like the original code
+    # Don't try to modify the model name at all
+    payload = {"model": model, "messages": [{"role": "user", "content": p}]}
     
-    payload = {"model": base_model, "messages": [{"role": "user", "content": p}]}
+    logger.debug(f"Using model: {model}")
 
     resp = session.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
     try:
