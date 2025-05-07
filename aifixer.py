@@ -102,12 +102,14 @@ def extract_fixed_file(output: str) -> str:
 
 @contextmanager
 def spinner(message: str):
-    """Simple terminal spinner (only if stdout isatty)."""
-    if not sys.stdout.isatty():
+    """Simple terminal spinner with ASCII chars for universal compatibility."""
+    # Only show spinner when stderr is connected to a terminal
+    if not sys.stderr.isatty():
         yield
         return
 
-    chars = ["⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
+    # Simple ASCII spinner chars that work everywhere
+    chars = ["-", "\\", "|", "/"]
     stop = False
 
     def run_spin():
@@ -121,12 +123,13 @@ def spinner(message: str):
         sys.stderr.flush()
 
     thread = threading.Thread(target=run_spin)
+    thread.daemon = True  # Make thread daemon so it exits when main thread does
     thread.start()
     try:
         yield
     finally:
         stop = True
-        thread.join()
+        thread.join(timeout=0.5)  # Add timeout to avoid hanging
 
 
 # ─── Model Listing ─────────────────────────────────────────────────────────────
@@ -369,7 +372,7 @@ def main() -> None:
         return
 
     # Interactive banner & update check
-    if sys.stdout.isatty():
+    if sys.stderr.isatty():  # Changed from stdout to stderr for consistency
         print_banner()
 
     # Process
