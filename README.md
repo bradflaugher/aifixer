@@ -1,240 +1,204 @@
-# AIFixer
+# AIFixer 🛠️ - AI-powered code fixes in your terminal
 
 <p align="center">
   <img src="./logo.svg" alt="AIFixer" width="600">
+  <br>
+  <a href="https://github.com/bradflaugher/aifixer/stargazers"><img src="https://img.shields.io/github/stars/bradflaugher/aifixer?style=flat-square" alt="Stars"></a>
+  <a href="https://github.com/bradflaugher/aifixer/network/members"><img src="https://img.shields.io/github/forks/bradflaugher/aifixer?style=flat-square" alt="Forks"></a>
+  <a href="https://github.com/bradflaugher/aifixer/issues"><img src="https://img.shields.io/github/issues/bradflaugher/aifixer?style=flat-square" alt="Issues"></a>
+  <a href="https://github.com/bradflaugher/aifixer/blob/main/LICENSE"><img src="https://img.shields.io/github/license/bradflaugher/aifixer?style=flat-square" alt="License"></a>
 </p>
 
-AIFixer is a lightweight, blazing-fast command-line tool that harnesses AI to enhance your coding workflow without ever leaving the terminal. Perfect for CLI enthusiasts, vim/emacs power users, and developers who prefer focused tools over bloated IDEs.
+<p align="center"><strong>Harness AI to fix your code without ever leaving the terminal.</strong></p>
 
-## Why AIFixer?
-
-Most AI coding assistants are either embedded in heavy IDEs (like Cursor, Copilot, or CodeGPT) or require context switching to web interfaces (Claude, ChatGPT). AIFixer brings AI coding superpowers directly to your terminal workflow:
-
-- **Terminal-native** - No browser tabs, no GUI apps, just pure CLI efficiency
-- **Blazing fast** - Get AI-powered code fixes in seconds
-- **Cost-effective** - While Claude Code is powerful, it can strain your budget. AIFixer lets you choose between powerful cloud models for complex tasks or economical/free alternatives for simpler fixes. By controlling exactly what context you send, you minimize token usage and maximize value—perfect for developers mindful of API costs.​​​​​​​​​​​​​​​​
-- **Universal** - Works with any programming language or framework
-- **Composable** - Follows the Unix philosophy: do one thing well and work with other tools
-- **BYOM (Bring Your Own Model)** - Use ANY model from:
-  - OpenRouter API (Claude, GPT, Llama, etc.)
-  - Local Ollama models (run completely offline)
-- **Minimal dependencies** - Just Python and requests
-- **Maximum flexibility** - Custom prompts, file extraction, codebase analysis
-
-## Installation
+## ⚡ Get Started in 10 Seconds
 
 ```bash
-# Download, make executable, and install in one go
+# Install
+curl -s https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.py | sudo tee /usr/local/bin/aifixer >/dev/null && sudo chmod +x /usr/local/bin/aifixer
+
+# Set your API key
+export OPENROUTER_API_KEY=your_api_key
+
+# Fix a file with TODOs
+cat file_with_todos.py | aifixer > fixed_file.py
+```
+
+## 🔥 Why Developers Love AIFixer
+
+Most AI coding assistants pull you away from the command line into IDEs or browser interfaces. **AIFixer brings AI directly to your terminal** – where programmers are most productive.
+
+- **✅ 100% Terminal-native** - No browser tabs or GUI apps to slow you down
+- **✅ Lightning-fast** - AI code fixes in seconds, right where you need them
+- **✅ Cost-effective** - Use powerful cloud models or free alternatives – you control the budget
+- **✅ Universal** - Works with any programming language or framework
+- **✅ Composable** - Pipe in your code, pipe out fixed code – Unix philosophy at its best
+
+## 🤯 See It In Action
+
+```bash
+# Show a diff of the changes AIFixer will make
+diff -u <(cat buggy_code.c) <(cat buggy_code.c | aifixer) | delta
+
+# Fix all TODOs and immediately commit (dangerous but awesome)
+cat feature.py | aifixer > feature.py && git commit -am "Implement feature with AIFixer"
+
+# Process specific code patterns with custom prompts
+cat api.js | aifixer --prompt "Add input validation to all API endpoints: " > secure_api.js
+```
+
+## 🔧 Installation
+
+### Prerequisites: Python Requests
+
+**Linux (Debian/Ubuntu):**
+```bash
+# Using apt package manager
+sudo apt install python3-requests
+
+# Or using pip
+pip3 install requests
+```
+
+**Mac/Homebrew:**
+```bash
+# Using pip
+pip install requests
+```
+
+**Windows:**
+```powershell
+# Using pip
+pip install requests
+```
+
+### Install AIFixer
+
+**Linux/Mac (One-line install):**
+```bash
 curl -s https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.py | sudo tee /usr/local/bin/aifixer >/dev/null && sudo chmod +x /usr/local/bin/aifixer
 ```
 
-## Configuration
-
-### OpenRouter API
-
-AIFixer uses the OpenRouter API by default. You'll need to set up your API key:
-
+**Alternative without sudo:**
 ```bash
-export OPENROUTER_API_KEY=your_api_key
+mkdir -p ~/.local/bin
+curl -s https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.py -o ~/.local/bin/aifixer
+chmod +x ~/.local/bin/aifixer
 ```
 
-For permanent configuration, add this line to your `~/.bashrc` or `~/.zshrc` file.
+**Windows:**
+```powershell
+# Create a directory for scripts if it doesn't exist
+if (-not (Test-Path "$env:USERPROFILE\Scripts")) {
+    New-Item -ItemType Directory -Path "$env:USERPROFILE\Scripts"
+}
 
-### Ollama Setup (Optional)
+# Download AIFixer
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.py" -OutFile "$env:USERPROFILE\Scripts\aifixer.py"
 
-To use local Ollama models:
+# Create a batch file wrapper
+@"
+@echo off
+python "%USERPROFILE%\Scripts\aifixer.py" %*
+"@ | Out-File -FilePath "$env:USERPROFILE\Scripts\aifixer.bat" -Encoding ascii
+
+# Add to PATH (if not already there)
+if (-not ($env:PATH -like "*$env:USERPROFILE\Scripts*")) {
+    [Environment]::SetEnvironmentVariable("PATH", "$env:PATH;$env:USERPROFILE\Scripts", "User")
+    echo "Added Scripts to PATH. Please restart your terminal."
+}
+```
+
+## 🔑 Configuration
+
+### API Key Setup
+
+**Set your OpenRouter API key (required for cloud models):**
+
+```bash
+# Linux/Mac
+export OPENROUTER_API_KEY=your_api_key
+
+# Windows
+$env:OPENROUTER_API_KEY = "your_api_key"
+```
+
+For permanent configuration:
+- **Linux/Mac**: Add to `~/.bashrc` or `~/.zshrc`
+- **Windows**: Add to PowerShell profile or system environment variables
+
+### Ollama Setup (Optional for offline use)
 
 1. Install Ollama from [ollama.ai](https://ollama.ai)
-2. Pull the models you want to use:
-   ```bash
-   ollama pull codellama
-   ollama pull llama3
-   ```
-3. Make sure Ollama is running in the background before using AIFixer with the `--ollama-model` flag
+2. Pull models: `ollama pull codellama`
+3. Start Ollama in background
 
-## Basic Usage
-
-### Fix TODOs (The Main Event)
-
-```bash
-# The classic: pipe a file with TODOs, get back fixed code
-cat file_with_todos.py | aifixer > fixed_file.py
-
-# Or use a redirect (same result)
-aifixer < file_with_todos.py > fixed_file.py
-```
+## 💡 Models & Flexibility
 
 ### Choose Your Model
 
 ```bash
-# Use a powerful cloud model
+# Use a powerful cloud model for complex tasks
 cat complex_feature.py | aifixer --model anthropic/claude-3-opus-20240229 > implemented_feature.py
 
-# Go local & offline with Ollama
-cat performance_bottleneck.js | aifixer --ollama-model codellama > optimized_code.js
+# Go lightweight for simpler fixes
+cat typo_fix.js | aifixer --model openai/gpt-3.5-turbo > fixed.js
 
-# Let AIFixer pick the most economical model automatically 
-cat simple_script.py | aifixer --free > improved_script.py
+# Use a free/local model with Ollama
+cat performance_bottleneck.js | aifixer --ollama-model codellama > optimized_code.js
 ```
 
-### One-liners That Save Time
+### List Available Models
 
 ```bash
-# Edit a file in-place
-aifixer < slow_function.rb | sponge slow_function.rb  # requires moreutils
+# List cloud models
+aifixer --list-models
 
-# See a diff of the changes
-diff -u <(cat buggy_code.c) <(cat buggy_code.c | aifixer) | delta  # delta for pretty diffs
-
-# Fix all your TODOs and immediately commit (dangerous but awesome)
-cat file_with_todos.py | aifixer > file_with_todos.py && git commit -am "Fix TODOs with AIFixer"
+# List local Ollama models
+aifixer --list-ollama-models
 ```
 
-## Advanced Usage
+## 🧙‍♂️ Advanced Usage
 
-### Processing an Entire Codebase
+### Custom Prompts for Specific Tasks
 
-You can use AIFixer with codebase-to-text to analyze and fix an entire codebase but only return a specific file:
+```bash
+# Add documentation to functions
+cat poorly_documented.py | aifixer --prompt "Add comprehensive docstrings to all functions: " > documented_file.py
+
+# Optimize a slow algorithm
+cat slow_algorithm.py | aifixer --prompt "Optimize this algorithm for better performance: " > optimized_algorithm.py
+```
+
+### Working with Entire Codebases
 
 ```bash
 # Install codebase-to-text if needed
 pip install codebase-to-text
 
-# Convert codebase to text, fix it with AIFixer, and extract only the file with TODOs
+# Convert codebase to text, fix it, extract only one file
 codebase-to-text --input "~/projects/my_project" --output - --output_type "txt" | \
 aifixer --fix-file-only > fixed_file.py
 ```
 
-### Examining a Codebase to Fix a Single File
+## 📢 Spread the Word
 
-If you want to give the AI context from your entire codebase but only edit one file:
+If AIFixer saves you time:
 
-```bash
-# Create a flattened view of the codebase
-codebase-to-text --input "~/projects/my_project" --output "/tmp/flattened_codebase.txt" --output_type "txt"
+- ⭐ Star the project on GitHub
+- 🐦 Share on Twitter/X: [`Click to tweet about AIFixer`](https://twitter.com/intent/tweet?text=Just%20discovered%20AIFixer%3A%20AI-powered%20code%20fixes%20right%20in%20the%20terminal!%20No%20more%20copying%20%26%20pasting%20to%20ChatGPT%20or%20leaving%20my%20workflow.%20Check%20it%20out%3A%20https%3A//github.com/bradflaugher/aifixer)
+- 👥 Show your colleagues
+- 📝 Blog about your experience
 
-# Use the flattened codebase as context to fix a specific file
-cat /tmp/flattened_codebase.txt | aifixer --prompt "Using the codebase context provided, fix the TODOs in the file 'src/utils/formatter.js' and only return that file: " > fixed_formatter.js
-```
+## 📚 Documentation
 
-### Custom Prompts
+- [ADVANCED.md](./ADVANCED.md) - Detailed usage, customization options, and advanced techniques
+- [TESTING.md](./TESTING.md) - Information on integration tests and validation
+- See the [Wiki](https://github.com/bradflaugher/aifixer/wiki) for additional resources
 
-Define custom prompts for specific tasks:
-
-```bash
-# Fix bugs in a file
-cat buggy_file.py | aifixer --prompt "Find and fix all bugs in this code: " > fixed_file.py
-
-# Add documentation to functions
-cat poorly_documented.py | aifixer --prompt "Add comprehensive docstrings to all functions in this code: " > documented_file.py
-
-# Optimize a slow algorithm
-cat slow_algorithm.py | aifixer --prompt "Optimize this algorithm for better performance and explain your changes: " > optimized_algorithm.py
-```
-
-### List Available Models
-
-OpenRouter models:
-
-```bash
-aifixer --list-models
-```
-
-Local Ollama models:
-
-```bash
-aifixer --list-ollama-models
-```
-
-## Best Practices
-
-1. **Use git before running AIFixer** - This allows you to compare changes and revert if needed
-2. **Review AI changes** - Always review the generated code before committing
-3. **Use specific prompts** - More specific prompts yield better results
-4. **Try different models** - Different models have different strengths
-5. **Provide context** - For complex fixes, include related files or documentation
-
-## Advanced Examples
-
-### Improving Error Handling
-
-```bash
-cat app.js | aifixer --prompt "Improve error handling in this code by adding try/catch blocks and proper error logging: " > improved_app.js
-```
-
-### Implementing a Feature Based on Comments
-
-```bash
-cat feature_outline.py | aifixer --prompt "Implement the feature described in the comments and TODOs: " > implemented_feature.py
-```
-
-### Refactoring Code
-
-```bash
-cat legacy_code.java | aifixer --prompt "Refactor this code to use modern Java features and improve readability: " > refactored_code.java
-```
-
-### Migrating Between Frameworks
-
-```bash
-cat react_component.jsx | aifixer --prompt "Convert this React class component to a functional component with hooks: " > functional_component.jsx
-```
-
-## Troubleshooting
-
-### API Key Issues
-
-If you see "Error: OPENROUTER_API_KEY environment variable not set":
-
-```bash
-export OPENROUTER_API_KEY=your_api_key
-```
-
-### Ollama Connection Issues
-
-If you see "Error: Failed to connect to Ollama":
-
-1. Check if Ollama is running: `ps aux | grep ollama`
-2. Start Ollama if it's not running: `ollama serve`
-3. Try again with `--list-ollama-models` to verify connection
-
-### Code Output Issues
-
-If the AI generates code that doesn't compile or work as expected:
-
-1. Try a different model: `--model anthropic/claude-3-opus-20240229`
-2. Be more specific in your prompt
-3. Break down complex tasks into smaller steps
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## Why Not Use...?
-
-### VS Code + Copilot/Cursor/CodeGPT?
-Great tools, but they're **700MB+ apps** that take over your workflow. AIFixer is a **single file** that integrates with your existing terminal tools.
-
-### ChatGPT/Claude Web Interface?
-Copying and pasting code between browser and terminal breaks flow. AIFixer keeps you in your terminal, where your focus belongs.
-
-### Anthropic's Claude Code or GitHub's Copilot CLI?
-These are awesome more comprehensive tools, but AIFixer:
-- Is smaller and more focused
-- Gives you model flexibility (use ANY model)
-- Follows Unix philosophy (do one thing well)
-- Works right now, with your code, your terminal, your way
-
-## License
+## ⚖️ License
 
 This project is licensed under the GPLv3 License - see the LICENSE file for details.
-
-## Acknowledgments
-
-- OpenRouter for providing API access to various models
-- Ollama for local model inference
-- Anthropic's Claude and other LLM providers
-- All the command-line warriors who inspired this tool
 
 ---
 
