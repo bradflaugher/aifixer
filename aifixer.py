@@ -132,14 +132,41 @@ def spinner(message: str):
         thread.join(timeout=0.5)  # Add timeout to avoid hanging
 
 
-# ─── Model Listing ─────────────────────────────────────────────────────────────
+# ─── Model Listing & Selection ───────────────────────────────────────────────────
+def get_free_model(session: requests.Session, sort_key: str = "price") -> Optional[str]:
+    """Return the ID of the free/cheapest model from OpenRouter."""
+    url = f"{OPENROUTER_URL}/models"
+    try:
+        resp = session.get(url, timeout=REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        data = resp.json().get("data", [])
+    except Exception as e:
+        logger.error("Could not fetch OpenRouter models: %s", e)
+        sys.exit(1)
+
+    # filter & sort
+    models = [
+        m for m in data
+        if m.get("pricing") and m.get("id") != "openrouter/auto"
+    ]
+    sorters = {
+        "price": lambda m: (m["pricing"].get("prompt", float("inf")), -m.get("context_length", 0)),
+        "best":  lambda m: (-float(m["pricing"].get("prompt", 0)), -m.get("context_length", 0)),
+        "context": lambda m: (-int(m.get("context_length", 0)), m["pricing"].get("prompt", float("inf"))),
+    }
+    models.sort(key=sorters[sort_key])
+    
+    if models:
+        return models[0]["id"]
+    return None
+
+
 def fetch_openrouter_models(
     session: requests.Session,
     num: int,
-    auto: bool,
     sort_key: str = "price",
 ) -> None:
-    """Fetch & display (or auto‑select) top OpenRouter models."""
+    """Fetch & display top OpenRouter models."""
     url = f"{OPENROUTER_URL}/models"
     try:
         resp = session.get(url, timeout=REQUEST_TIMEOUT)
@@ -161,10 +188,6 @@ def fetch_openrouter_models(
     }
     models.sort(key=sorters[sort_key])
     chosen = models[:num]
-
-    if auto and chosen:
-        sys.stdout.write(chosen[0]["id"])
-        return
 
     # table header
     headers = ["Model ID", "Context", "Prompt", "Completion", "Description"]
@@ -341,19 +364,23 @@ def main() -> None:
         return
 
     if args.list_models:
-        fetch_openrouter_models(session, args.num_models, auto=False, sort_key=args.sort_by)
+        fetch_openrouter_models(session, args.num_models, sort_key=args.sort_by)
         return
 
     if args.list_ollama_models:
         fetch_ollama_models(session)
         return
 
-    # Free model auto‑select
+    # Free model auto‑select - FIXED: Use the new function and log to stderr
     if args.free and not args.ollama_model:
         with spinner("Selecting free model…"):
-            sys.stdout.write("")
-            fetch_openrouter_models(session, 1, auto=True, sort_key=args.sort_by)
-            sys.stdout.flush()
+            model_id = get_free_model(session, sort_key=args.sort_by)
+        if model_id:
+            logger.info(f"Selected free model: {model_id}")
+            args.model = model_id
+        else:
+            logger.error("No free models found")
+            sys.exit(1)
 
     # Gather input_text
     if args.text:
