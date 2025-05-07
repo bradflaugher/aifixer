@@ -99,4 +99,3 @@ On rare occasions, the trap may not fire (e.g. if you kill the script with kill 
 ⸻
 
 With this in place, you’ll have a quick, repeatable sanity check for every change to AIFixer! Feel free to submit additional test cases as PRs to the repository.
-
