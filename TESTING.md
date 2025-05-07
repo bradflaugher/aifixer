@@ -65,17 +65,6 @@ Each test prints a colored PASS or FAIL message, plus a reason if it fails. At t
 - **FAIL** (red): The test did not meet expectations; a brief "Reason" will be shown.
 - **Warnings**: If optional dependencies are missing (e.g. no OPENROUTER_API_KEY), you'll see a warning, but the script will proceed.
 
-## Extending the Test Suite
-
-This framework is intentionally minimal. You can add more tests by copying the helper functions and following the existing pattern. Some ideas:
-
-- **Model listing**: Verify that `--list-models` and `--list-ollama-models` produce non-empty tables.
-- **`--free` flag**: Confirm that the `--free` shortcut picks a valid free model.
-- **Custom prompts**: Pipe in code with a custom prompt and validate a keyword appears in the output.
-- **Error conditions**: Run without OPENROUTER_API_KEY (when no Ollama) and expect a non-zero exit and an explanatory error message.
-
-Note: Because AI output is non-deterministic, tests focus on exit codes, the presence or absence of key markers (like TODO), and correct CLI plumbing (stdout vs stderr), rather than exact code diffs.
-
 ## Troubleshooting
 
 1. **`aifixer` not found**  
@@ -92,7 +81,3 @@ Note: Because AI output is non-deterministic, tests focus on exit codes, the pre
 
 4. **Cleanup issues**  
    On rare occasions, the trap may not fire (e.g. if you kill the script with `kill -9`). Temporary files live under `/tmp/aifixer_test_*`; feel free to delete them manually.
-
----
-
-With this in place, you'll have a quick, repeatable sanity check for every change to AIFixer! Feel free to submit additional test cases as PRs to the repository.
