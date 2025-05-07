@@ -122,8 +122,8 @@ def spinner(message: str):
 
 
 # ─── Model Listing & Selection ───────────────────────────────────────────────────
-def get_free_model(session: requests.Session, sort_key: str = "price") -> Optional[str]:
-    """Return the ID of the free/cheapest model from OpenRouter, preserving any :free suffix."""
+def get_free_models(session: requests.Session, sort_key: str = "price") -> List[str]:
+    """Return a list of free model IDs from OpenRouter, sorted by the given criteria."""
     url = f"{OPENROUTER_URL}/models"
     try:
         resp = session.get(url, timeout=REQUEST_TIMEOUT)
@@ -133,27 +133,30 @@ def get_free_model(session: requests.Session, sort_key: str = "price") -> Option
         logger.error("Could not fetch OpenRouter models: %s", e)
         sys.exit(1)
 
-    # filter & sort
-    models = [
+    # filter to get only free models
+    free_models = [
         m for m in data
-        if m.get("pricing") and m.get("id") != "openrouter/auto"
+        if m.get("pricing") and m.get("id") != "openrouter/auto" 
+        and m.get("pricing", {}).get("prompt", float("inf")) == 0
     ]
-    sorters = {
-        "price": lambda m: (m["pricing"].get("prompt", float("inf")), -m.get("context_length", 0)),
-        "best":  lambda m: (-float(m["pricing"].get("prompt", 0)), -m.get("context_length", 0)),
-        "context": lambda m: (-int(m.get("context_length", 0)), m["pricing"].get("prompt", float("inf"))),
-    }
-    models.sort(key=sorters[sort_key])
     
-    if models:
-        # Return the model ID and ensure it has the :free suffix if it's a free model
-        model_id = models[0]["id"]
-        if models[0]["pricing"].get("prompt", 0) == 0:
-            # Only add :free suffix if it's not already there
-            if not model_id.endswith(":free"):
-                model_id = f"{model_id}:free"
-        return model_id
-    return None
+    # Sort models using the specified criteria
+    sorters = {
+        "price": lambda m: (-m.get("context_length", 0)),  # For free models, sort by context length
+        "best":  lambda m: (-m.get("context_length", 0)),  # Same as above for free models
+        "context": lambda m: (-int(m.get("context_length", 0))),
+    }
+    free_models.sort(key=sorters[sort_key])
+    
+    # Return full model IDs including :free suffix if needed
+    result = []
+    for m in free_models:
+        model_id = m["id"]
+        if not model_id.endswith(":free"):
+            model_id = f"{model_id}:free"
+        result.append(model_id)
+    
+    return result
 
 
 def fetch_openrouter_models(
@@ -258,31 +261,63 @@ def process_with_openrouter(
     input_text: str,
     fix_only: bool,
     target_file: Optional[str],
+    retry_models: Optional[List[str]] = None,
 ) -> str:
-    """Send prompt+input to OpenRouter and return AI response (or fixed code)."""
+    """Send prompt+input to OpenRouter and return AI response (or fixed code).
+    
+    If retry_models is provided, will attempt those models in order on failure.
+    """
     p = build_fix_prompt(prompt, fix_only, target_file) + input_text
     url = f"{OPENROUTER_URL}/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     
     # Use the full model name exactly as provided, just like the original code
-    # Don't try to modify the model name at all
-    payload = {"model": model, "messages": [{"role": "user", "content": p}]}
+    current_model = model
+    payload = {"model": current_model, "messages": [{"role": "user", "content": p}]}
     
-    logger.debug(f"Using model: {model}")
+    logger.debug(f"Using model: {current_model}")
 
-    resp = session.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
     try:
+        resp = session.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
         resp.raise_for_status()
         content = resp.json()["choices"][0]["message"]["content"]
+        return extract_fixed_file(content) if fix_only else content
+    
     except Exception as e:
-        logger.error(f"OpenRouter error ({resp.status_code}): {e}")
+        error_msg = f"Error with model {current_model}: {e}"
+        
+        # If we have retry models, attempt them in sequence
+        if retry_models:
+            logger.warning(f"{error_msg} - Trying fallback models...")
+            
+            for fallback_model in retry_models:
+                if fallback_model == current_model:
+                    continue  # Skip the one we just tried
+                
+                logger.info(f"Trying fallback model: {fallback_model}")
+                payload["model"] = fallback_model
+                
+                try:
+                    resp = session.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
+                    resp.raise_for_status()
+                    content = resp.json()["choices"][0]["message"]["content"]
+                    logger.info(f"✓ Fallback model {fallback_model} succeeded")
+                    return extract_fixed_file(content) if fix_only else content
+                except Exception as fallback_e:
+                    logger.warning(f"Fallback model {fallback_model} failed: {fallback_e}")
+                    continue  # Try the next model in the list
+            
+            # If we get here, all fallbacks failed
+            logger.error("All models failed. Last error:")
+        
+        # Print detailed error for the last attempt
         try:
-            # Try to provide more helpful debug info
+            logger.error(f"OpenRouter error ({resp.status_code}): {e}")
             logger.error(f"Response content: {resp.text[:200]}...")
         except:
-            pass
+            logger.error(f"OpenRouter error: {e}")
+        
         sys.exit(1)
-    return extract_fixed_file(content) if fix_only else content
 
 
 def process_with_ollama(
@@ -333,6 +368,8 @@ def main() -> None:
     mg.add_argument("--model", default="anthropic/claude-3-sonnet-20240229")
     mg.add_argument("--ollama-model")
     mg.add_argument("--free", action="store_true")
+    mg.add_argument("--max-fallbacks", type=int, default=2, 
+                   help="Number of fallback models to try if free model fails (default: 2)")
 
     # Listing
     lg = parser.add_argument_group("Model Listing")
@@ -376,16 +413,23 @@ def main() -> None:
     if sys.stderr.isatty():
         print_version()
 
-    # Free model auto‑select - FIXED: Use the new function and log to stderr
+    # Free model auto‑select with fallbacks
+    fallback_models = []
     if args.free and not args.ollama_model:
-        with spinner("Selecting free model…"):
-            model_id = get_free_model(session, sort_key=args.sort_by)
-        if model_id:
-            logger.info(f"Selected free model: {model_id}")
-            args.model = model_id
-        else:
+        with spinner("Selecting free models…"):
+            free_models = get_free_models(session, sort_key=args.sort_by)
+            
+        if not free_models:
             logger.error("No free models found")
             sys.exit(1)
+            
+        # Set primary model and keep others as fallbacks
+        args.model = free_models[0]
+        fallback_models = free_models[1:args.max_fallbacks+1]  # Limit fallbacks
+        
+        logger.info(f"Selected free model: {args.model}")
+        if fallback_models:
+            logger.info(f"Fallback models: {', '.join(fallback_models)}")
 
     # Gather input_text
     if args.text:
@@ -421,7 +465,8 @@ def main() -> None:
             with spinner(f"Processing via OpenRouter ({args.model})…"):
                 result = process_with_openrouter(
                     session, api_key, args.model, args.prompt,
-                    input_text, args.fix_file_only, args.target_file
+                    input_text, args.fix_file_only, args.target_file,
+                    retry_models=fallback_models
                 )
     except KeyboardInterrupt:
         logger.warning("Operation cancelled by user.")
