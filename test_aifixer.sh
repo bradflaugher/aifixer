@@ -143,6 +143,36 @@ else
   print_result "FAIL" "--list-todo-files (none) failed"
 fi
 
+# ─── Test 6: --free Flag Testing ────────────────────────────────────────────────
+print_header "Test 6: --free Flag"
+
+readonly TEST_CODE_6=$'# File: free_test.py\n# TODO: implement a greeting function\ndef greet():\n    pass\n'
+f6=$(create_temp_file "$TEST_CODE_6")
+
+if free_out=$("$AIFIXER_CMD" --free < "$f6" 2>&1); then
+  # Check stderr output for model selection message
+  if grep -q "Selected model:" <<<"$free_out"; then
+    print_result "PASS" "--free selects model"
+    
+    # Capture only stdout (AI result)
+    if ai_result=$("$AIFIXER_CMD" --free < "$f6"); then
+      # Check if the function implementation includes a 'print' statement
+      print_count=$(grep -c "print" <<<"$ai_result" || echo 0)
+      if [[ $print_count -gt 0 ]]; then
+        print_result "PASS" "--free implementation contains print"
+      else
+        print_result "FAIL" "--free implementation" "No print statement found"
+      fi
+    else
+      print_result "FAIL" "--free execution" "Non-zero exit code"
+    fi
+  else
+    print_result "FAIL" "--free model selection" "No model selection message found"
+  fi
+else
+  print_result "FAIL" "--free flag failed"
+fi
+
 # ─── Summary ──────────────────────────────────────────────────────────────────
 print_header "Test Summary"
 echo "Total tests run: $TEST_COUNT"
