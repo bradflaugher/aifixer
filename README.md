@@ -23,41 +23,9 @@ Most AI coding assistants are either embedded in heavy IDEs (like Cursor, Copilo
 
 ## Installation
 
-### One-liner (Quickest)
-
 ```bash
 # Download, make executable, and install in one go
 curl -s https://raw.githubusercontent.com/bradflaugjer/aifixer/main/aifixer.py | sudo tee /usr/local/bin/aifixer >/dev/null && sudo chmod +x /usr/local/bin/aifixer
-```
-
-### From PyPI (Coming Soon)
-
-```bash
-pip install aifixer
-```
-
-### From Source
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/aifixer.git
-cd aifixer
-
-# Install
-pip install -e .
-```
-
-### Manual Installation
-
-```bash
-# Download the script
-curl -O https://raw.githubusercontent.com/yourusername/aifixer/main/aifixer.py
-
-# Make executable
-chmod +x aifixer.py
-
-# Move to a directory in your PATH
-sudo mv aifixer.py /usr/local/bin/aifixer
 ```
 
 ## Configuration
