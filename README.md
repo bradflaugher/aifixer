@@ -49,65 +49,40 @@ cat api.js | aifixer --prompt "Add input validation to all API endpoints: " > se
 
 ## 🔧 Installation
 
-### Prerequisites: Python Requests
+### Prerequisites
 
-**Linux (Debian/Ubuntu):**
+AIFixer requires Python and the `requests` library:
+
 ```bash
-# Using apt package manager
+# Debian/Ubuntu
 sudo apt install python3-requests
 
-# Or using pip
-pip3 install requests
-```
+# Other Linux/Mac with pip
+pip install requests   # or pip3 install requests on some systems
 
-**Mac/Homebrew:**
-```bash
-# Using pip
-pip install requests
-```
-
-**Windows:**
-```powershell
-# Using pip
-pip install requests
+# For Windows users
+# See WINDOWS.md for detailed setup instructions
 ```
 
 ### Install AIFixer
 
-**Linux/Mac (One-line install):**
+**Quick install (Linux/Mac):**
 ```bash
+# One-line install (requires sudo)
 curl -s https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.py | sudo tee /usr/local/bin/aifixer >/dev/null && sudo chmod +x /usr/local/bin/aifixer
 ```
 
 **Alternative without sudo:**
 ```bash
+# For Homebrew users or if ~/.local/bin is in your PATH
 mkdir -p ~/.local/bin
 curl -s https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.py -o ~/.local/bin/aifixer
 chmod +x ~/.local/bin/aifixer
 ```
 
-**Windows:**
-```powershell
-# Create a directory for scripts if it doesn't exist
-if (-not (Test-Path "$env:USERPROFILE\Scripts")) {
-    New-Item -ItemType Directory -Path "$env:USERPROFILE\Scripts"
-}
+**Windows users:**
+See [WINDOWS.md](./WINDOWS.md) for Windows installation instructions.
 
-# Download AIFixer
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.py" -OutFile "$env:USERPROFILE\Scripts\aifixer.py"
-
-# Create a batch file wrapper
-@"
-@echo off
-python "%USERPROFILE%\Scripts\aifixer.py" %*
-"@ | Out-File -FilePath "$env:USERPROFILE\Scripts\aifixer.bat" -Encoding ascii
-
-# Add to PATH (if not already there)
-if (-not ($env:PATH -like "*$env:USERPROFILE\Scripts*")) {
-    [Environment]::SetEnvironmentVariable("PATH", "$env:PATH;$env:USERPROFILE\Scripts", "User")
-    echo "Added Scripts to PATH. Please restart your terminal."
-}
-```
 
 ## 🔑 Configuration
 
