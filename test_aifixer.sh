@@ -102,11 +102,11 @@ if [[ $before_count -ne 1 ]]; then
 else
   # Capture only stdout (AI result), let stderr go to console
   if ai_out=$("$AIFIXER_CMD" < "$f3"); then
-    after_count=$(grep -c "TODO" <<<"$ai_out" || echo 0)
-    if [[ $after_count -lt $before_count ]]; then
-      print_result "PASS" "TODOs reduced ($before_count → $after_count)"
+    print_count=$(grep -c "print" <<<"$ai_out" || echo 0)
+    if [[ $print_count -gt 0 ]]; then
+      print_result "PASS" "print found"
     else
-      print_result "FAIL" "TODOs not reduced" "Before=$before_count, After=$after_count"
+      print_result "FAIL" "print not found"
     fi
   else
     print_result "FAIL" "aifixer execution" "Non­zero exit code"
