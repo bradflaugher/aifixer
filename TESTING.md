@@ -1,60 +1,102 @@
 # AIFixer Test Script README
 
-This document provides instructions on how to use the `test_aifixer.sh` script to test the `aifixer` command-line tool.
+This document explains how to use the `test_aifixer.sh` script to run integration tests against the `aifixer` command‑line tool.
+
+---
 
 ## Prerequisites
 
-Before running the test script, please ensure the following prerequisites are met:
+1. **`aifixer` Installed**  
+   Make sure the `aifixer` executable is installed and available on your `PATH`. Follow the [AIFixer installation instructions](https://github.com/bradflaugher/aifixer) if you haven’t already.
 
-1.  **`aifixer` Installed**: The `aifixer` command-line tool must be installed and accessible in your system's PATH. You can typically install it by following the instructions in the [AIFixer GitHub repository](https://github.com/bradflaugher/aifixer).
-2.  **Bash**: The script is written in Bash and requires a Bash-compatible shell to run.
-3.  **`mktemp`**: The script uses `mktemp` to create temporary files. This utility is commonly available on Linux and macOS systems.
-4.  **(Optional) `OPENROUTER_API_KEY`**: For tests involving OpenRouter models, you need to have the `OPENROUTER_API_KEY` environment variable set. If not set, tests specifically requiring this key might be skipped or use default free-tier models if `aifixer` supports that.
-5.  **(Optional) Ollama**: For tests involving local Ollama models, you need to have Ollama installed and the Ollama server running. The script will attempt to detect if Ollama is running. If not, Ollama-specific tests will be skipped. You can install Ollama from [ollama.ai](https://ollama.ai/).
-6.  **(Optional) `sponge`**: For the in-place editing test case, the `sponge` utility (part of `moreutils`) is required. If not installed, this specific test will be skipped. You can usually install it via your system's package manager (e.g., `sudo apt-get install moreutils` on Debian/Ubuntu, `brew install moreutils` on macOS).
+2. **Bash**  
+   A modern Bash shell (with support for `set -euo pipefail` and `trap`) is required.
 
-## How to Run the Script
+3. **`mktemp`**  
+   Used to create temporary files; available by default on most Linux and macOS systems.
 
-1.  Save the `test_aifixer.sh` script to your local machine.
-2.  Make the script executable:
-    ```bash
-    chmod +x test_aifixer.sh
-    ```
-3.  Run the script from your terminal:
-    ```bash
-    ./test_aifixer.sh
-    ```
+4. **`grep`**  
+   The script uses `grep` to check for TODOs and parse output.
 
-## Script Overview
+5. **(Optional) `OPENROUTER_API_KEY`**  
+   If you want to test OpenRouter‑based functionality, export your API key first:
+   ```bash
+   export OPENROUTER_API_KEY=your_api_key
 
-The script performs the following actions:
+If not set, tests that depend on OpenRouter may still run against a default or free‑tier model (if supported), or may warn/fail.
+	6.	(Optional) Ollama
+To test against a local Ollama server, install Ollama and ensure it’s running on http://localhost:11434. If not available, Ollama‑specific tests will be skipped or error out.
 
-*   Checks for the presence of `aifixer` and other optional dependencies.
-*   Runs a series of test cases based on the functionalities described in the AIFixer README.
-*   Currently, it includes a basic test case for fixing TODOs in a Python file using the default `aifixer` behavior.
-*   Prints PASS/FAIL status for each test case.
-*   Provides a summary of the test results.
+⸻
 
-## Interpreting Results
+Installing & Running the Tests
+	1.	Download or clone the test script into your AIFixer repo directory:
 
-*   **PASS**: Indicates that the test case executed as expected (e.g., `aifixer` command ran successfully, and for TODO fixing, the number of "TODO" instances decreased).
-*   **FAIL**: Indicates that the test case did not meet the expected outcome. The script will provide a reason for the failure.
-*   **Warnings**: The script may print warnings if optional dependencies (like `OPENROUTER_API_KEY`, Ollama, or `sponge`) are not found. Tests relying on these dependencies might be skipped.
+cp path/to/test_aifixer.sh .
 
-## Current Status & Further Development
 
-This script provides a foundational framework and an initial test case. The `todo.md` file (also provided) outlines further test cases that can be implemented to cover more features of `aifixer`, such as:
+	2.	Make it executable:
 
-*   Testing with specific OpenRouter models.
-*   Testing with Ollama models.
-*   Testing the `--free` flag.
-*   Testing in-place file editing.
-*   Testing model listing commands.
-*   Testing custom prompts.
+chmod +x test_aifixer.sh
 
-Due to the non-deterministic nature of AI output, the script primarily checks for successful command execution and general indications of success (like a reduction in TODOs) rather than exact output matching for AI-generated code.
 
-## Important Note
+	3.	Run the script:
 
-The script was developed in an environment where `aifixer` was not pre-installed. The initial run of the script will likely fail the prerequisite check for `aifixer`. Please ensure `aifixer` is correctly installed before running the tests.
+./test_aifixer.sh
+
+The script will automatically exit with status 0 if all tests pass, or 1 if any test fails.
+
+⸻
+
+What the Script Does
+	1.	Strict mode (set -euo pipefail) to catch unbound variables, pipeline failures, and errors early.
+	2.	Auto‑cleanup of all temporary files via a trap on EXIT.
+	3.	Prerequisite checks for aifixer, OPENROUTER_API_KEY, and other utilities.
+	4.	Five core tests:
+	1.	--version: Ensures aifixer --version prints a semantic version (e.g. 1.1.0).
+	2.	--help: Verifies usage text appears (looks for “usage:”).
+	3.	Basic TODO removal: Pipes a small Python snippet with one TODO into AIFixer and checks that the number of TODO annotations decreases.
+	4.	--list-todo-files with TODOs: Uses a two‑file flatten (only one has a TODO) and ensures only the correct filename is printed.
+	5.	--list-todo-files with no TODOs: Confirms AIFixer reports “no TODOs” when appropriate.
+
+Each test prints a colored PASS or FAIL message, plus a reason if it fails. At the end, a summary shows how many tests ran and how many passed.
+
+⸻
+
+Interpreting Results
+	•	PASS (green): The test behaved as expected.
+	•	FAIL (red): The test did not meet expectations; a brief “Reason” will be shown.
+	•	Warnings: If optional dependencies are missing (e.g. no OPENROUTER_API_KEY), you’ll see a warning, but the script will proceed.
+
+⸻
+
+Extending the Test Suite
+
+This framework is intentionally minimal. You can add more tests by copying the helper functions and following the existing pattern. Some ideas:
+	•	Model listing: Verify that --list-models and --list-ollama-models produce non‑empty tables.
+	•	--free flag: Confirm that the --free shortcut picks a valid free model.
+	•	Custom prompts: Pipe in code with a custom prompt and validate a keyword appears in the output.
+	•	Error conditions: Run without OPENROUTER_API_KEY (when no Ollama) and expect a non‑zero exit and an explanatory error message.
+
+Note: Because AI output is non‑deterministic, tests focus on exit codes, the presence or absence of key markers (like TODO), and correct CLI plumbing (stdout vs stderr), rather than exact code diffs.
+
+⸻
+
+Troubleshooting
+	1.	aifixer not found
+Make sure you installed it and that it’s on your PATH.
+	2.	Permission denied
+Ensure test_aifixer.sh is executable:
+
+chmod +x test_aifixer.sh
+
+
+	3.	Unexpected FAIL
+Read the “Reason” printed under the failed test. You can rerun that single test block manually, or add set -x to the top of the script to see each command as it runs.
+	4.	Cleanup issues
+On rare occasions, the trap may not fire (e.g. if you kill the script with kill -9). Temporary files live under /tmp/aifixer_test_*; feel free to delete them manually.
+
+⸻
+
+With this in place, you’ll have a quick, repeatable sanity check for every change to AIFixer! Feel free to submit additional test cases as PRs to the repository.
 
