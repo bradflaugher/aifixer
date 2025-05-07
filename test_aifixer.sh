@@ -1,148 +1,157 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# aifixer integration tests
+# Requires: bash, grep, mktemp, aifixer in PATH
+set -euo pipefail
 
-# AIFixer Test Script
-# This script tests the basic functionalities of the aifixer tool.
-
-# Exit immediately if a command exits with a non-zero status.
-set -e
-
-# --- Configuration & Variables ---
+# ─── Globals ──────────────────────────────────────────────────────────────────
 TEST_COUNT=0
 PASSED_COUNT=0
-AIXIFER_CMD="aifixer"
+AIFIXER_CMD="aifixer"
+TMPFILES=()
 
-# --- Helper Functions ---
+# ─── Cleanup ──────────────────────────────────────────────────────────────────
+cleanup() {
+  rm -f "${TMPFILES[@]:-}"
+}
+trap cleanup EXIT
 
-# Function to print test headers
+# ─── Helpers ──────────────────────────────────────────────────────────────────
 print_header() {
-    echo ""
-    echo "======================================================================="
-    echo "$1"
-    echo "======================================================================="
+  echo
+  echo "======================================================================="
+  echo "$1"
+  echo "======================================================================="
 }
 
-# Function to print pass/fail messages
 print_result() {
-    TEST_COUNT=$((TEST_COUNT + 1))
-    if [ "$1" = "PASS" ]; then
-        PASSED_COUNT=$((PASSED_COUNT + 1))
-        echo -e "\033[32mPASS:\033[0m $2"
-    else
-        echo -e "\033[31mFAIL:\033[0m $2"
-        if [ -n "$3" ]; then
-            echo -e "      \033[31mReason:\033[0m $3"
-        fi
-    fi
+  local status=$1 msg=$2 reason=${3:-}
+  TEST_COUNT=$((TEST_COUNT+1))
+  if [[ $status == "PASS" ]]; then
+    PASSED_COUNT=$((PASSED_COUNT+1))
+    echo -e "\e[32mPASS:\e[0m $msg"
+  else
+    echo -e "\e[31mFAIL:\e[0m $msg"
+    [[ -n $reason ]] && echo -e "      \e[31mReason:\e[0m $reason"
+  fi
 }
 
-# Function to check if a command exists
 command_exists() {
-    command -v "$1" >/dev/null 2>&1
+  command -v "$1" >/dev/null 2>&1
 }
 
-# Function to create a temporary test file
 create_temp_file() {
-    local content="$1"
-    local temp_file
-    temp_file=$(mktemp /tmp/aifixer_test_XXXXXX.py)
-    echo -e "$content" > "$temp_file"
-    echo "$temp_file"
+  local content=$1
+  local tmp
+  tmp=$(mktemp /tmp/aifixer_test_XXXXXX.py)
+  echo -e "$content" > "$tmp"
+  TMPFILES+=("$tmp")
+  echo "$tmp"
 }
 
-# --- Prerequisite Checks ---
-print_header "Checking Prerequisites"
+# ─── Prerequisite Checks ──────────────────────────────────────────────────────
+print_header "Prerequisite Checks"
 
-if ! command_exists "$AIXIFER_CMD"; then
-    echo "Error: aifixer command not found. Please ensure it is installed and in your PATH." >&2
-    exit 1
+if ! command_exists "$AIFIXER_CMD"; then
+  echo "Error: '$AIFIXER_CMD' not found in PATH." >&2
+  exit 1
+fi
+echo "✔ Found '$AIFIXER_CMD'"
+
+# OPENROUTER_API_KEY presence (warn only)
+if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
+  echo "Warning: OPENROUTER_API_KEY not set. OpenRouter‑based tests may fail."
 else
-    echo "aifixer command found."
+  echo "✔ OPENROUTER_API_KEY is set"
 fi
 
-OPENROUTER_API_KEY_SET=false
-if [ -n "$OPENROUTER_API_KEY" ]; then
-    OPENROUTER_API_KEY_SET=true
-    echo "OPENROUTER_API_KEY is set."
+# ─── Test 1: --version ─────────────────────────────────────────────────────────
+print_header "Test 1: --version"
+
+if version_output=$($AIFIXER_CMD --version); then
+  if [[ $version_output =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    print_result "PASS" "--version prints semantic version ('$version_output')"
+  else
+    print_result "FAIL" "--version format" "Got '$version_output'"
+  fi
 else
-    echo "Warning: OPENROUTER_API_KEY is not set. Tests requiring OpenRouter models may fail or be skipped."
+  print_result "FAIL" "--version failed to run"
 fi
 
-OLLAMA_RUNNING=false
-if command_exists "ollama"; then
-    # Simple check, assumes ollama ps would succeed if server is running and accessible
-    # A more robust check might involve `ollama list` or `curl` to the Ollama API endpoint
-    if ollama ps >/dev/null 2>&1; then
-        OLLAMA_RUNNING=true
-        echo "Ollama appears to be running."
+# ─── Test 2: --help ────────────────────────────────────────────────────────────
+print_header "Test 2: --help"
+
+if help_output=$($AIFIXER_CMD --help); then
+  if grep -qi "usage:" <<<"$help_output"; then
+    print_result "PASS" "--help shows usage"
+  else
+    print_result "FAIL" "--help content" "No 'usage:' in output"
+  fi
+else
+  print_result "FAIL" "--help failed to run"
+fi
+
+# ─── Test 3: Basic TODO Fixing ──────────────────────────────────────────────────
+print_header "Test 3: Basic TODO Removal"
+
+readonly TEST_CODE_3=$'# File: hello.py\n# TODO: implement greet()\ndef greet():\n    pass\n'
+f3=$(create_temp_file "$TEST_CODE_3")
+before_count=$(grep -c "TODO" "$f3")
+
+if [[ $before_count -ne 1 ]]; then
+  print_result "FAIL" "Initial TODO count" "Expected 1, got $before_count"
+else
+  # Capture only stdout (AI result), let stderr go to console
+  if ai_out=$("$AIFIXER_CMD" < "$f3"); then
+    after_count=$(grep -c "TODO" <<<"$ai_out" || echo 0)
+    if [[ $after_count -lt $before_count ]]; then
+      print_result "PASS" "TODOs reduced ($before_count → $after_count)"
     else
-        echo "Warning: Ollama command exists, but the server doesn't seem to be running (ollama ps failed). Ollama tests may be skipped or fail."
+      print_result "FAIL" "TODOs not reduced" "Before=$before_count, After=$after_count"
     fi
-elif curl --output /dev/null --silent --head --fail http://localhost:11434; then
-    OLLAMA_RUNNING=true
-    echo "Ollama API is accessible at http://localhost:11434."
-else
-    echo "Warning: Ollama command not found and Ollama API not accessible at http://localhost:11434. Ollama tests will be skipped."
+  else
+    print_result "FAIL" "aifixer execution" "Non­zero exit code"
+  fi
 fi
 
-SPONGE_INSTALLED=false
-if command_exists "sponge"; then
-    SPONGE_INSTALLED=true
-    echo "sponge (from moreutils) is installed."
+# ─── Test 4: --list-todo-files (some TODOs) ───────────────────────────────────
+print_header "Test 4: --list-todo-files (with TODOs)"
+
+readonly TEST_CODE_4=$'# File: foo.py\nprint("ok")\n# File: bar.py\n# TODO: fix me\n'
+f4=$(create_temp_file "$TEST_CODE_4")
+if list_out=$("$AIFIXER_CMD" --list-todo-files < "$f4"); then
+  if grep -qx "bar.py" <<<"$list_out" && ! grep -qx "foo.py" <<<"$list_out"; then
+    print_result "PASS" "--list-todo-files correctly listed 'bar.py'"
+  else
+    print_result "FAIL" "--list-todo-files content" "Got: $(echo "$list_out" | tr '\n' ' | ')"
+  fi
 else
-    echo "Warning: sponge (from moreutils) is not installed. In-place editing test will be skipped."
+  print_result "FAIL" "--list-todo-files failed"
 fi
 
-# --- Test Cases ---
+# ─── Test 5: --list-todo-files (no TODOs) ─────────────────────────────────────
+print_header "Test 5: --list-todo-files (none)"
 
-print_header "Test Case 1: Basic TODO Fixing (Default Model - usually OpenRouter's free tier)"
-TEST_FILE_CONTENT_1="# Python code\ndef hello():\n    # TODO: Implement this function to print hello world\n    pass"
-EXPECTED_TODO_COUNT_BEFORE_1=1
-
-test_file_1="$(create_temp_file "$TEST_FILE_CONTENT_1")"
-echo "Created test file: $test_file_1 with content:"
-cat "$test_file_1"
-
-# Count TODOs before running aifixer
-actual_todo_count_before_1=$(grep -c "TODO" "$test_file_1")
-
-if [ "$actual_todo_count_before_1" -ne "$EXPECTED_TODO_COUNT_BEFORE_1" ]; then
-    print_result "FAIL" "Test Case 1: Initial TODO count mismatch." "Expected $EXPECTED_TODO_COUNT_BEFORE_1, got $actual_todo_count_before_1"
+readonly TEST_CODE_5=$'# File: only.py\nprint("all good")\n'
+f5=$(create_temp_file "$TEST_CODE_5")
+if no_list_out=$("$AIFIXER_CMD" --list-todo-files < "$f5"); then
+  if [[ "$no_list_out" =~ ([Nn]o.*TODO) ]]; then
+    print_result "PASS" "--list-todo-files reports none"
+  else
+    print_result "FAIL" "--list-todo-files expected 'no TODOs'" "Got: '$no_list_out'"
+  fi
 else
-    echo "Initial TODO count is correct: $actual_todo_count_before_1"
-    # Run aifixer
-    # Since AI output is non-deterministic, we check if the command runs and if TODOs are reduced.
-    # We expect the default model to be an OpenRouter free model if API key is not set, or a default paid one if set.
-    if output_1=$(cat "$test_file_1" | $AIXIFER_CMD 2>&1); then
-        echo "aifixer ran successfully. Output:"
-        echo "$output_1"
-        # Check if output is not empty and if TODO count is reduced or eliminated
-        if [ -n "$output_1" ]; then
-            actual_todo_count_after_1=$(echo "$output_1" | grep -c "TODO")
-            if [ "$actual_todo_count_after_1" -lt "$EXPECTED_TODO_COUNT_BEFORE_1" ]; then
-                print_result "PASS" "Test Case 1: Basic TODO fixing seems to work (TODOs reduced)."
-            else
-                print_result "FAIL" "Test Case 1: TODO count did not decrease after running aifixer." "Before: $EXPECTED_TODO_COUNT_BEFORE_1, After: $actual_todo_count_after_1"
-            fi
-        else
-            print_result "FAIL" "Test Case 1: aifixer produced empty output."
-        fi
-    else
-        exit_code=$?
-        print_result "FAIL" "Test Case 1: aifixer command failed." "Exit code: $exit_code. Output: $output_1"
-    fi
+  print_result "FAIL" "--list-todo-files (none) failed"
 fi
-rm "$test_file_1"
 
-# --- Summary ---
+# ─── Summary ──────────────────────────────────────────────────────────────────
 print_header "Test Summary"
 echo "Total tests run: $TEST_COUNT"
-echo "Tests passed: $PASSED_COUNT"
+echo "Tests passed:     $PASSED_COUNT"
 
-if [ "$PASSED_COUNT" -eq "$TEST_COUNT" ]; then
-    echo -e "\033[32mAll tests passed!\033[0m"
-    exit 0
+if [[ $PASSED_COUNT -eq $TEST_COUNT ]]; then
+  echo -e "\e[32mAll tests passed!\e[0m"
+  exit 0
 else
-    echo -e "\033[31mSome tests failed.\033[0m"
-    exit 1
+  echo -e "\e[31mSome tests failed.\e[0m"
+  exit 1
 fi
-
