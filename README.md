@@ -24,6 +24,83 @@ export OPENROUTER_API_KEY=your_api_key
 cat file_with_todos.py | aifixer > fixed_file.py
 ```
 
+## 🧪 Example: Before & After
+
+### Before: File with TODOs
+
+```python
+def calculate_total(items):
+    # TODO: Implement validation for empty list
+    total = 0
+    for item in items:
+        # TODO: Handle non-numeric items
+        total += item
+    # TODO: Add support for discount calculation
+    return total
+
+def process_order(order_data):
+    # TODO: Add error handling for missing fields
+    items = order_data['items']
+    total = calculate_total(items)
+    # TODO: Implement tax calculation
+    return {
+        'order_id': order_data['id'],
+        'total': total,
+        # TODO: Add timestamp for order processing
+    }
+```
+
+### After: Fixed with AIFixer
+
+```python
+def calculate_total(items):
+    # Validate empty list
+    if not items:
+        return 0
+        
+    total = 0
+    for item in items:
+        # Handle non-numeric items
+        try:
+            total += float(item)
+        except (TypeError, ValueError):
+            continue
+    
+    # Support for discount calculation
+    discount_rate = 0.1 if total > 100 else 0
+    total = total * (1 - discount_rate)
+    
+    return total
+
+def process_order(order_data):
+    # Error handling for missing fields
+    if not order_data or not isinstance(order_data, dict):
+        raise ValueError("Invalid order data: must be a non-empty dictionary")
+    
+    if 'items' not in order_data:
+        raise KeyError("Missing required field: 'items'")
+    
+    if 'id' not in order_data:
+        raise KeyError("Missing required field: 'id'")
+        
+    items = order_data['items']
+    total = calculate_total(items)
+    
+    # Implement tax calculation
+    tax_rate = 0.08  # 8% tax rate
+    tax_amount = total * tax_rate
+    total_with_tax = total + tax_amount
+    
+    import datetime
+    
+    return {
+        'order_id': order_data['id'],
+        'total': total_with_tax,
+        'tax': tax_amount,
+        'processed_at': datetime.datetime.now().isoformat(),  # Add timestamp
+    }
+```
+
 ## 🔥 Why Developers Love AIFixer
 
 Most AI coding assistants pull you away from the command line into IDEs or browser interfaces. **AIFixer brings AI directly to your terminal** – where programmers are most productive.
