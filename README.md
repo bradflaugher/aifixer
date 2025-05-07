@@ -175,7 +175,6 @@ If AIFixer saves you time:
 
 - [ADVANCED.md](./ADVANCED.md) - Detailed usage, customization options, and advanced techniques
 - [TESTING.md](./TESTING.md) - Information on integration tests and validation
-- See the [Wiki](https://github.com/bradflaugher/aifixer/wiki) for additional resources
 
 ## ⚖️ License
 
