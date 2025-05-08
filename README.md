@@ -107,6 +107,7 @@ Most AI coding assistants pull you away from the command line into IDEs or brows
 
 - **✅ 100% Terminal-native** - No browser tabs or GUI apps to slow you down
 - **✅ Lightning-fast** - AI code fixes in seconds, right where you need them
+- **✅ Handles massive files** - Easily processes large codebases where other tools struggle or fail
 - **✅ Cost-effective** - Use powerful cloud models or free alternatives – you control the budget
 - **✅ Universal** - Works with any programming language or framework
 - **✅ Composable** - Pipe in your code, pipe out fixed code – Unix philosophy at its best
