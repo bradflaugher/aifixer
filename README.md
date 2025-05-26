@@ -1,4 +1,4 @@
-# AIFixer 🛠️ - AI-powered code fixes in your terminal
+# AIFixer 🛠️
 
 <p align="center">
   <img src="./logo.svg" alt="AIFixer" width="600">
@@ -9,25 +9,47 @@
   <a href="https://github.com/bradflaugher/aifixer/blob/main/LICENSE"><img src="https://img.shields.io/github/license/bradflaugher/aifixer?style=flat-square" alt="License"></a>
 </p>
 
-<p align="center"><strong>Harness AI to fix your code without ever leaving the terminal.</strong></p>
+<p align="center">
+  <strong>AI-powered code fixes and improvements, right in your terminal</strong>
+  <br>
+  <em>Turn TODOs into working code • Fix bugs instantly • Refactor with confidence</em>
+</p>
 
-## ⚡ Get Started in 10 Seconds
+---
 
+## 🚀 What is AIFixer?
+
+AIFixer is a terminal-native tool that uses AI to automatically fix, improve, and complete your code. Pipe in broken code, get working code back out. It's that simple.
+
+**Perfect for:**
+- Implementing TODO comments
+- Fixing syntax errors and bugs  
+- Adding error handling and validation
+- Refactoring messy code
+- Adding documentation and comments
+
+## ⚡ Quick Start
+
+**Install in one command:**
 ```bash
-# Install
-curl -s https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.sh | sudo tee /usr/local/bin/aifixer >/dev/null && sudo chmod +x /usr/local/bin/aifixer
-
-# Set your API key
-export OPENROUTER_API_KEY=your_api_key
-
-# Fix a file with TODOs
-cat file_with_todos.py | aifixer > fixed_file.py
+curl -sL https://raw.githubusercontent.com/bradflaugher/aifixer/main/install.sh | bash
 ```
 
-## 🧪 Example: Before & After
+**Fix your first file:**
+```bash
+cat broken_code.py | aifixer > fixed_code.py
+```
 
-### Before: File with TODOs
+That's it! The installer handles dependencies, asks for your API key once, and puts `aifixer` on your PATH.
 
+## 🎯 See It in Action
+
+**Before** → **After**
+
+<details>
+<summary>🐛 Bug fixes and TODO implementation</summary>
+
+**Input:**
 ```python
 def calculate_total(items):
     # TODO: Implement validation for empty list
@@ -37,318 +59,205 @@ def calculate_total(items):
         total += item
     # TODO: Add support for discount calculation
     return total
-
-def process_order(order_data):
-    # TODO: Add error handling for missing fields
-    items = order_data['items']
-    total = calculate_total(items)
-    # TODO: Implement tax calculation
-    return {
-        'order_id': order_data['id'],
-        'total': total,
-        # TODO: Add timestamp for order processing
-    }
 ```
 
-### After: Fixed with AIFixer
-
+**Output:**
 ```python
 def calculate_total(items):
+    """Calculate total with validation and discount support."""
     # Validate empty list
     if not items:
-        return 0
-        
-    total = 0
+        return 0.0
+
+    total = 0.0
     for item in items:
-        # Handle non-numeric items
+        # Handle non-numeric items gracefully
         try:
             total += float(item)
         except (TypeError, ValueError):
+            print(f"Warning: Skipping non-numeric item: {item}")
             continue
-    
-    # Support for discount calculation
-    discount_rate = 0.1 if total > 100 else 0
-    total = total * (1 - discount_rate)
-    
-    return total
 
-def process_order(order_data):
-    # Error handling for missing fields
-    if not order_data or not isinstance(order_data, dict):
-        raise ValueError("Invalid order data: must be a non-empty dictionary")
-    
-    if 'items' not in order_data:
-        raise KeyError("Missing required field: 'items'")
-    
-    if 'id' not in order_data:
-        raise KeyError("Missing required field: 'id'")
+    # Apply discount for orders over $100
+    discount_rate = 0.1 if total > 100 else 0.0
+    return total * (1 - discount_rate)
+```
+</details>
+
+<details>
+<summary>🔧 Error handling and robustness</summary>
+
+**Input:**
+```javascript
+function fetchUserData(userId) {
+    const response = fetch(`/api/users/${userId}`);
+    const data = response.json();
+    return data.user;
+}
+```
+
+**Output:**
+```javascript
+async function fetchUserData(userId) {
+    try {
+        if (!userId) {
+            throw new Error('User ID is required');
+        }
         
-    items = order_data['items']
-    total = calculate_total(items)
-    
-    # Implement tax calculation
-    tax_rate = 0.08  # 8% tax rate
-    tax_amount = total * tax_rate
-    total_with_tax = total + tax_amount
-    
-    import datetime
-    
-    return {
-        'order_id': order_data['id'],
-        'total': total_with_tax,
-        'tax': tax_amount,
-        'processed_at': datetime.datetime.now().isoformat(),  # Add timestamp
+        const response = await fetch(`/api/users/${userId}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (!data.user) {
+            throw new Error('User data not found in response');
+        }
+        
+        return data.user;
+    } catch (error) {
+        console.error('Failed to fetch user data:', error);
+        throw error;
     }
+}
 ```
+</details>
 
-## 🔥 Why Developers Love AIFixer
+## 🔧 Installation Options
 
-Most AI coding assistants pull you away from the command line into IDEs or browser interfaces. **AIFixer brings AI directly to your terminal** – where programmers are most productive.
-
-- **✅ 100% Terminal-native** - No browser tabs or GUI apps to slow you down
-- **✅ Lightning-fast** - AI code fixes in seconds, right where you need them
-- **✅ Minimal dependencies** - Just bash and curl – works everywhere, no jq required
-- **✅ Handles massive files** - Easily processes large codebases where other tools struggle or fail
-- **✅ Cost-effective** - Use powerful cloud models or free alternatives – you control the budget
-- **✅ Universal** - Works with any programming language or framework
-- **✅ Composable** - Pipe in your code, pipe out fixed code – Unix philosophy at its best
-
-## 🤯 See It In Action
-
+### Automatic Installation (Recommended)
 ```bash
-# Show a diff of the changes AIFixer will make
-diff -u <(cat buggy_code.c) <(cat buggy_code.c | aifixer) | delta
-
-# Fix all TODOs and immediately commit (dangerous but awesome)
-cat feature.py | aifixer > feature.py && git commit -am "Implement feature with AIFixer"
-
-# Get just the fixed code without explanations (perfect for piping)
-cat buggy_code.py | aifixer --fix-file-only > fixed_code.py
-
-# Process specific code patterns with custom prompts
-cat api.js | aifixer --prompt "Add input validation to all API endpoints: " > secure_api.js
+curl -sL https://raw.githubusercontent.com/bradflaugher/aifixer/main/install.sh | bash
 ```
 
-## 🔧 Installation
-
-### Prerequisites
-
-AIFixer is written in bash and requires minimal dependencies:
-
-- **bash** (v4.0+) - Usually pre-installed on Linux/Mac
-- **curl** - For API requests
-- **awk** - For JSON parsing (usually pre-installed, part of POSIX standard)
-- **grep** and **sed** - Text processing utilities (usually pre-installed)
-
+### Manual Installation
 ```bash
-# Debian/Ubuntu
-sudo apt install curl gawk
+# Clone the repo
+git clone https://github.com/bradflaugher/aifixer.git
+cd aifixer
 
-# Fedora/RHEL/CentOS
-sudo dnf install curl gawk
-
-# Arch Linux
-sudo pacman -S curl gawk
-
-# Mac (with Homebrew)
-brew install curl gawk
-
-# OpenSUSE
-sudo zypper install curl gawk
+# Run installer with options
+./install.sh --help
 ```
 
-**Note:** Most Unix-like systems have these tools pre-installed. The `gawk` package ensures you have a fully-featured version of awk that supports the string manipulation functions used by AIFixer.
+### Installation Flags
+| Flag | Description |
+|------|-------------|
+| `--prefix DIR` | Install to custom directory |
+| `--api-key KEY` | Set API key non-interactively |
+| `--skip-deps` | Skip dependency checks |
+| `--skip-api-key` | Don't modify shell configs |
 
-### Install AIFixer
-
-**Quick install (Linux/Mac):**
+### Minimal Setup
+Just want the script? Download `aifixer.sh`, make it executable, and add your API key:
 ```bash
-# One-line install (requires sudo)
-curl -s https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.sh | sudo tee /usr/local/bin/aifixer >/dev/null && sudo chmod +x /usr/local/bin/aifixer
+chmod +x aifixer.sh
+export OPENROUTER_API_KEY="your-key-here"
 ```
 
-**Alternative without sudo:**
+## 💡 Usage Examples
+
+### Basic Usage
 ```bash
-# For Homebrew users or if ~/.local/bin is in your PATH
-mkdir -p ~/.local/bin
-curl -s https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.sh -o ~/.local/bin/aifixer
-chmod +x ~/.local/bin/aifixer
+# Fix a single file
+cat buggy.py | aifixer > fixed.py
+
+# Preview changes before applying
+diff -u original.js <(cat original.js | aifixer)
+
+# Fix and commit in one go
+cat feature.py | aifixer > feature.py && git commit -am "AI fixes applied"
 ```
 
-### Windows Installation
-
-AIFixer can run on Windows using Git Bash, WSL, or Cygwin.
-
-**Option 1: Git Bash (Recommended)**
-1. Install [Git for Windows](https://git-scm.com/download/win) (includes Git Bash)
-2. Open Git Bash
-3. Run:
-   ```bash
-   # Download to your home directory
-   curl -s https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.sh -o ~/aifixer
-   chmod +x ~/aifixer
-   
-   # Add to PATH (add this to ~/.bashrc to make permanent)
-   export PATH="$HOME:$PATH"
-   ```
-
-**Option 2: Windows Subsystem for Linux (WSL)**
-1. Install WSL: `wsl --install` (in PowerShell as Administrator)
-2. Open WSL terminal
-3. Follow the Linux installation instructions above
-
-**Option 3: Native Windows (PowerShell)**
-```powershell
-# Download the script
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.sh" -OutFile "$env:USERPROFILE\aifixer.sh"
-
-# You'll need a bash interpreter like Git Bash to run it
-# Then run: bash ~/aifixer.sh
-```
-
-## 🔑 Configuration
-
-### API Key Setup
-
-**Set your OpenRouter API key (required for cloud models):**
-
+### Advanced Usage
 ```bash
-# Linux/Mac
-export OPENROUTER_API_KEY=your_api_key
+# Use specific AI model
+aifixer --model anthropic/claude-3-opus-20240229 < complex.py > improved.py
 
-# Windows (Git Bash)
-export OPENROUTER_API_KEY=your_api_key
+# Custom instructions
+aifixer --prompt "Add comprehensive error handling" < server.js > server_safe.js
 
-# Windows (PowerShell - if using WSL)
-$env:OPENROUTER_API_KEY = "your_api_key"
+# Local/offline with Ollama
+aifixer --ollama-model codellama < script.sh > script_fixed.sh
+
+# Code only, no explanations
+aifixer --code-only < messy.c > clean.c
 ```
 
-For permanent configuration:
-- **Linux/Mac/Git Bash**: Add to `~/.bashrc` or `~/.zshrc`
-- **Windows PowerShell**: Add to PowerShell profile or system environment variables
-
-### Ollama Setup (Optional for offline use)
-
-1. Install Ollama from [ollama.ai](https://ollama.ai)
-2. Pull models: `ollama pull codellama`
-3. Start Ollama in background
-
-## 💡 Models & Flexibility
-
-### Choose Your Model
-
+### CI/CD Integration
 ```bash
-# Use a powerful cloud model for complex tasks
-cat complex_feature.py | aifixer --model anthropic/claude-3-opus-20240229 > implemented_feature.py
-
-# Go lightweight for simpler fixes
-cat typo_fix.js | aifixer --model openai/gpt-3.5-turbo > fixed.js
-
-# Use a free/local model with Ollama
-cat performance_bottleneck.js | aifixer --ollama-model codellama > optimized_code.js
-
-# Auto-select a free model
-cat code.py | aifixer --free > fixed_code.py
+# Check if fixes are needed (non-zero exit if changes made)
+if cat src/*.py | aifixer --check-only; then
+    echo "Code is clean!"
+else
+    echo "Fixes available - run aifixer to apply"
+fi
 ```
 
-### List Available Models
+## 🎛️ Configuration
 
+### API Keys
+Set your OpenRouter API key (installer does this automatically):
 ```bash
-# List cloud models
+export OPENROUTER_API_KEY="your-key-here"
+```
+
+### Model Selection
+```bash
+# List available models
 aifixer --list-models
 
-# List local Ollama models
-aifixer --list-ollama-models
+# Use free models when possible
+aifixer --free-models-first
 
-# Sort models by context length
-aifixer --list-models --sort-by context
-
-# Show only top 10 cheapest models
-aifixer --list-models --num-models 10 --sort-by price
+# Set default model
+export AIFIXER_DEFAULT_MODEL="anthropic/claude-3-haiku-20240307"
 ```
 
-## 🧙‍♂️ Advanced Usage
-
-### Output Modes
-
+### Local AI with Ollama
 ```bash
-# Default: Full AI response with explanations
-cat code.py | aifixer
-# Output: Fixed code + explanations of changes
+# Install Ollama and pull a model
+ollama pull codellama
 
-# Clean code only (ideal for piping to files)
-cat code.py | aifixer --fix-file-only > fixed.py
-# Output: Just the fixed code, no explanations
-
-# When to use --fix-file-only:
-# - Piping directly to source files
-# - Automated workflows and CI/CD pipelines
-# - When you only need the code, not the reasoning
+# Use local model
+aifixer --ollama-model codellama < code.py > fixed.py
 ```
 
-### Custom Prompts for Specific Tasks
+## 🌟 Why AIFixer?
 
-```bash
-# Add documentation to functions
-cat poorly_documented.py | aifixer --prompt "Add comprehensive docstrings to all functions: " > documented_file.py
+- **🖥️ Terminal Native** - No browser context switching
+- **⚡ Fast** - Streams output, handles large files efficiently  
+- **🪶 Lightweight** - Just bash + curl, no heavy dependencies
+- **💰 Cost Aware** - Use free models or bring your own key
+- **🌐 Language Agnostic** - Works with any programming language
+- **🔗 Composable** - Perfect for pipes, scripts, and CI/CD
+- **🛡️ Safe** - Preview changes before applying
 
-# Optimize a slow algorithm
-cat slow_algorithm.py | aifixer --prompt "Optimize this algorithm for better performance: " > optimized_algorithm.py
+## 📖 Documentation
 
-# Convert code to a different style
-cat old_style.js | aifixer --prompt "Convert this to modern ES6+ syntax: " > modern_style.js
-```
+- [Advanced Usage Guide](ADVANCED.md) - Power user features and tricks
+- [Testing Guide](TESTING.md) - Integration tests and validation
+- [Contributing](CONTRIBUTING.md) - How to contribute to the project
 
-### Working with Entire Codebases
+## 🤝 Contributing
 
-```bash
-# Install codebase-to-text if needed
-pip install codebase-to-text
+We love contributions! Whether it's bug reports, feature requests, or code improvements:
 
-# Convert codebase to text, fix it, extract only one file
-codebase-to-text --input "~/projects/my_project" --output - --output_type "txt" | \
-aifixer --fix-file-only > fixed_file.py
+1. **⭐ Star this repo** if you find it useful
+2. **🐛 Report bugs** via GitHub issues  
+3. **💡 Submit feature requests** with use cases
+4. **🔧 Submit PRs** for improvements
 
-# List all files with TODOs in a codebase
-codebase-to-text --input . --output - | aifixer --list-todo-files
+## 📄 License
 
-# Fix a specific file from a codebase
-codebase-to-text --input . --output - | \
-aifixer --target-file "src/main.py" --fix-file-only > fixed_main.py
-```
-
-### Advanced Features
-
-```bash
-# Use fallback models if primary fails (great for free models)
-cat code.py | aifixer --free --max-fallbacks 3 > output.py
-
-# Enable verbose debugging
-cat code.py | aifixer --verbose --model gpt-4 > output.py
-
-# See help and examples
-aifixer --help
-aifixer --help-examples
-```
-
-## 📢 Spread the Word
-
-If AIFixer saves you time:
-
-- ⭐ Star the project on GitHub
-- 🐦 Share on Twitter/X: [`Click to tweet about AIFixer`](https://twitter.com/intent/tweet?text=Just%20discovered%20AIFixer%3A%20AI-powered%20code%20fixes%20right%20in%20the%20terminal!%20No%20more%20copying%20%26%20pasting%20to%20ChatGPT%20or%20leaving%20my%20workflow.%20Check%20it%20out%3A%20https%3A//github.com/bradflaugher/aifixer)
-- 👥 Show your colleagues
-- 📝 Blog about your experience
-
-## 📚 Documentation
-
-- [ADVANCED.md](./ADVANCED.md) - Detailed usage, customization options, and advanced techniques
-- [TESTING.md](./TESTING.md) - Information on integration tests and validation
-
-## ⚖️ License
-
-This project is licensed under the GPLv3 License - see the LICENSE file for details.
+This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-<p align="center"><i>For developers who know that AI tools should augment your workflow, not replace it.</i></p>
+<p align="center">
+  <em>AI should augment your workflow, not replace it.</em>
+  <br>
+  <strong>Happy coding! 🚀</strong>
+</p>
