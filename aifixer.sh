@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-VERSION="1.3.0"
+VERSION="1.4.0"
 OPENROUTER_URL="https://openrouter.ai/api/v1"
 OLLAMA_URL="http://localhost:11434/api"
 REQUEST_TIMEOUT=60
