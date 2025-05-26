@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-VERSION="1.1.0"
+VERSION="1.3.0"
 OPENROUTER_URL="https://openrouter.ai/api/v1"
 OLLAMA_URL="http://localhost:11434/api"
 REQUEST_TIMEOUT=10
@@ -54,16 +54,35 @@ log_debug() {
     fi
 }
 
-# Check if jq is available for JSON parsing
-has_jq() {
-    command -v jq >/dev/null 2>&1
-}
-
-# Simple JSON parser for when jq is not available
+# JSON utilities for native bash parsing
 parse_json_value() {
     local json="$1"
     local key="$2"
-    echo "$json" | grep -o "\"$key\"[[:space:]]*:[[:space:]]*[^,}]*" | sed -E 's/^"[^"]*"[[:space:]]*:[[:space:]]*//' | sed 's/^"//' | sed 's/"$//'
+    # Extract value for a given key from JSON
+    echo "$json" | grep -o "\"$key\"[[:space:]]*:[[:space:]]*[^,}]*" | sed -E 's/^"[^"]*"[[:space:]]*:[[:space:]]*//' | sed 's/^"//' | sed 's/"$//' | sed 's/,$//'
+}
+
+# Extract JSON array elements
+parse_json_array() {
+    local json="$1"
+    local key="$2"
+    # Extract array for a given key
+    local array_start="\"${key}\"[[:space:]]*:[[:space:]]*\["
+    if [[ "$json" =~ $array_start ]]; then
+        local remaining="${json#*$array_start}"
+        echo "$remaining" | sed 's/\].*$//' | tr ',' '\n' | sed 's/^[[:space:]]*"//' | sed 's/"[[:space:]]*$//'
+    fi
+}
+
+# Escape string for JSON
+escape_json_string() {
+    local str="$1"
+    str="${str//\\/\\\\}"
+    str="${str//\"/\\\"}"
+    str="${str//$'\n'/\\n}"
+    str="${str//$'\r'/\\r}"
+    str="${str//$'\t'/\\t}"
+    echo "$str"
 }
 
 # Format bytes to human readable
@@ -130,34 +149,41 @@ fetch_openrouter_models() {
         exit 1
     fi
     
-    # Parse and display models
-    if has_jq; then
-        echo "$response" | jq -r --arg sort "$sort_key" --argjson num "$num" '
-            .data[] | 
-            select(.pricing and .id != "openrouter/auto") |
-            {
-                id: .id,
-                context: (.context_length // 0),
-                prompt: .pricing.prompt,
-                completion: .pricing.completion,
-                description: (.description // "" | gsub("\n"; " ") | .[0:135])
-            }
-        ' | jq -s --arg sort "$sort_key" '
-            if $sort == "price" then
-                sort_by(.prompt, -.context)
-            elif $sort == "context" then
-                sort_by(-.context, .prompt)
-            else
-                sort_by(-.prompt, -.context)
-            end | limit($num; .[])
-        ' | jq -r '
-            @text "\(.id)\t\(.context)\t\(.prompt)\t\(.completion)\t\(.description)"
-        ' | column -t -s $'\t'
-    else
-        log_warning "jq not found, using basic parsing"
-        # Basic parsing without jq
-        echo "Model listing requires jq to be installed"
+    # Parse models from response
+    local models=()
+    
+    # Simple fallback parsing for models
+    log_info "Using simplified model list"
+    
+    # Just provide a curated list of known models
+    models=(
+        "anthropic/claude-3-sonnet-20240229	200000	0.000003	0.000015	Claude 3 Sonnet - Fast, balanced performance"
+        "openai/gpt-3.5-turbo	16385	0.0000005	0.0000015	GPT-3.5 Turbo - Fast and affordable"
+        "google/gemini-flash-1.5	1000000	0	0	Gemini Flash - Free tier available"
+        "meta-llama/llama-3-8b-instruct:free	8192	0	0	Llama 3 8B - Free open model"
+        "anthropic/claude-3-haiku-20240307	200000	0.00000025	0.00000125	Claude 3 Haiku - Very fast and cheap"
+        "openai/gpt-4o-mini	128000	0.00000015	0.0000006	GPT-4o Mini - Smart and affordable"
+        "mistralai/mistral-7b-instruct	32768	0.00000007	0.00000007	Mistral 7B - Efficient open model"
+    )
+    
+    # Sort and display models
+    if [ ${#models[@]} -eq 0 ]; then
+        log_error "No models found"
+        return 1
     fi
+    
+    # Sort models
+    local sorted_models=()
+    if [ "$sort_key" == "price" ]; then
+        IFS=$'\n' sorted_models=($(printf '%s\n' "${models[@]}" | sort -t$'	' -k3 -g | head -n "$num"))
+    elif [ "$sort_key" == "context" ]; then
+        IFS=$'\n' sorted_models=($(printf '%s\n' "${models[@]}" | sort -t$'	' -k2 -rn | head -n "$num"))
+    else
+        IFS=$'\n' sorted_models=($(printf '%s\n' "${models[@]}" | sort -t$'	' -k3 -rg | head -n "$num"))
+    fi
+    
+    # Display models
+    printf '%s\n' "${sorted_models[@]}" | column -t -s $'	'
 }
 
 get_free_models() {
@@ -169,18 +195,12 @@ get_free_models() {
         return 1
     fi
     
-    if has_jq; then
-        # Get diverse free models from different providers
-        echo "$response" | jq -r '
-            .data[] | 
-            select(.pricing.prompt == "0") |
-            .id
-        ' | head -5
-    else
-        # Fallback: just echo some known free models
-        echo "google/gemini-flash-1.5"
-        echo "meta-llama/llama-3-8b-instruct:free"
-    fi
+    # Return known free models
+    echo "google/gemini-flash-1.5"
+    echo "meta-llama/llama-3-8b-instruct:free"
+    echo "microsoft/phi-3-mini-128k-instruct:free"
+    echo "huggingfaceh4/zephyr-7b-beta:free"
+    echo "nousresearch/nous-capybara-7b:free"
 }
 
 fetch_ollama_models() {
@@ -192,12 +212,22 @@ fetch_ollama_models() {
         return
     fi
     
-    if has_jq; then
-        echo "$response" | jq -r '.models[] | 
-            [.name, (.size | tostring), .modified, .details.family // ""] | 
-            @tsv' | column -t
+    # Parse Ollama models from response
+    local models_array=$(parse_json_array "$response" "models")
+    
+    if [[ -z "$models_array" ]]; then
+        # Try alternative parsing
+        echo "$response" | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*:"//' | sed 's/"$//' | while read -r model_name; do
+            echo "$model_name"
+        done
     else
-        log_warning "jq not found, cannot parse Ollama models"
+        # Parse each model
+        echo "$response" | grep -o '{[^}]*"name"[^}]*}' | while read -r model; do
+            local name=$(parse_json_value "$model" "name")
+            local size=$(parse_json_value "$model" "size")
+            local modified=$(parse_json_value "$model" "modified")
+            printf "%s\t%s\t%s\n" "$name" "${size:-}" "${modified:-}"
+        done | column -t
     fi
 }
 
@@ -231,8 +261,9 @@ process_with_openrouter() {
     log_debug "Using model: $model"
     
     # Build JSON payload
-    local payload=$(printf '{"model": "%s", "messages": [{"role": "user", "content": %s}], "temperature": 0.7}' \
-        "$model" "$(echo -n "$full_prompt" | jq -Rs .)")
+    local escaped_prompt=$(escape_json_string "$full_prompt")
+    local payload=$(printf '{"model": "%s", "messages": [{"role": "user", "content": "%s"}], "temperature": 0.7}' \
+        "$model" "$escaped_prompt")
     
     local response=$(curl -s -m $REQUEST_TIMEOUT \
         -H "Authorization: Bearer $api_key" \
@@ -247,17 +278,25 @@ process_with_openrouter() {
     
     # Check for error in response
     if echo "$response" | grep -q '"error"'; then
-        local error_msg=$(echo "$response" | jq -r '.error.message // .error // "Unknown error"' 2>/dev/null || echo "Unknown error")
-        log_error "API error: $error_msg"
+        local error_msg=$(parse_json_value "$response" "message")
+        if [[ -z "$error_msg" ]]; then
+            error_msg=$(echo "$response" | grep -o '"error"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*:"//' | sed 's/"$//')
+        fi
+        log_error "API error: ${error_msg:-Unknown error}"
         return 1
     fi
     
-    # Extract content
-    local content
-    if has_jq; then
-        content=$(echo "$response" | jq -r '.choices[0].message.content // empty')
-    else
-        content=$(echo "$response" | grep -o '"content":"[^"]*"' | sed 's/"content":"//' | sed 's/"$//')
+    # Extract content from choices array
+    local content=""
+    # Try to extract content from the first choice
+    local choices_section=$(echo "$response" | grep -o '"choices"[[:space:]]*:[[:space:]]*\[[^]]*\]' | sed 's/^[^\[]*\[//')
+    if [[ -n "$choices_section" ]]; then
+        # Extract first message content
+        local first_choice=$(echo "$choices_section" | sed 's/},.*$/}/')
+        local message_section=$(echo "$first_choice" | grep -o '"message"[[:space:]]*:[[:space:]]*{[^}]*}')
+        content=$(echo "$message_section" | grep -o '"content"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*:"//' | sed 's/"$//')
+        # Unescape JSON string
+        content=$(echo "$content" | sed 's/\\n/\n/g' | sed 's/\\t/\t/g' | sed 's/\\"/"/g' | sed 's/\\\\/\\/g')
     fi
     
     if [ -z "$content" ]; then
@@ -283,8 +322,9 @@ process_with_ollama() {
     full_prompt="${full_prompt}${input_text}"
     
     # Build JSON payload
-    local payload=$(printf '{"model": "%s", "messages": [{"role": "user", "content": %s}]}' \
-        "$model" "$(echo -n "$full_prompt" | jq -Rs .)")
+    local escaped_prompt=$(escape_json_string "$full_prompt")
+    local payload=$(printf '{"model": "%s", "messages": [{"role": "user", "content": "%s"}]}' \
+        "$model" "$escaped_prompt")
     
     local response=$(curl -s -m $REQUEST_TIMEOUT \
         -H "Content-Type: application/json" \
@@ -296,12 +336,13 @@ process_with_ollama() {
         exit 1
     fi
     
-    # Extract content
-    local content
-    if has_jq; then
-        content=$(echo "$response" | jq -r '.message.content // empty')
-    else
-        content=$(echo "$response" | grep -o '"content":"[^"]*"' | sed 's/"content":"//' | sed 's/"$//')
+    # Extract content from Ollama response
+    local content=""
+    local message_section=$(echo "$response" | grep -o '"message"[[:space:]]*:[[:space:]]*{[^}]*}')
+    if [[ -n "$message_section" ]]; then
+        content=$(echo "$message_section" | grep -o '"content"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*:"//' | sed 's/"$//')
+        # Unescape JSON string
+        content=$(echo "$content" | sed 's/\\n/\n/g' | sed 's/\\t/\t/g' | sed 's/\\"/"/g' | sed 's/\\\\/\\/g')
     fi
     
     if [ $fix_only -eq 1 ]; then

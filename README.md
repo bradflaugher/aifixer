@@ -107,7 +107,7 @@ Most AI coding assistants pull you away from the command line into IDEs or brows
 
 - **✅ 100% Terminal-native** - No browser tabs or GUI apps to slow you down
 - **✅ Lightning-fast** - AI code fixes in seconds, right where you need them
-- **✅ Minimal dependencies** - Just bash and curl – works everywhere
+- **✅ Minimal dependencies** - Just bash and curl – works everywhere, no jq required
 - **✅ Handles massive files** - Easily processes large codebases where other tools struggle or fail
 - **✅ Cost-effective** - Use powerful cloud models or free alternatives – you control the budget
 - **✅ Universal** - Works with any programming language or framework
@@ -134,23 +134,22 @@ AIFixer is written in bash and requires minimal dependencies:
 
 - **bash** (v4.0+) - Usually pre-installed on Linux/Mac
 - **curl** - For API requests
-- **jq** (optional but recommended) - For better JSON parsing
 
 ```bash
 # Debian/Ubuntu
-sudo apt install curl jq
+sudo apt install curl
 
 # Fedora/RHEL/CentOS
-sudo dnf install curl jq
+sudo dnf install curl
 
 # Arch Linux
-sudo pacman -S curl jq
+sudo pacman -S curl
 
 # Mac (with Homebrew)
-brew install curl jq
+brew install curl
 
 # OpenSUSE
-sudo zypper install curl jq
+sudo zypper install curl
 ```
 
 ### Install AIFixer
