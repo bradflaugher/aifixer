@@ -76,7 +76,7 @@ jobs:
     - name: Test automatic installation
       if: matrix.install_method == 'automatic'
       env:
-        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY || 'test-key-12345' }}
+        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       run: |
         # Set default API key if not provided
         if [ -z "$OPENROUTER_API_KEY" ]; then
