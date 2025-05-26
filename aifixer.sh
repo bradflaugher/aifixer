@@ -159,20 +159,6 @@ fetch_openrouter_models() {
     # Parse models from response
     local models=()
     
-    # Simple fallback parsing for models
-    log_info "Using simplified model list"
-    
-    # Just provide a curated list of known models
-    models=(
-        "anthropic/claude-3-sonnet-20240229	200000	0.000003	0.000015	Claude 3 Sonnet - Fast, balanced performance"
-        "openai/gpt-3.5-turbo	16385	0.0000005	0.0000015	GPT-3.5 Turbo - Fast and affordable"
-        "google/gemini-flash-1.5	1000000	0	0	Gemini Flash - Free tier available"
-        "meta-llama/llama-3-8b-instruct:free	8192	0	0	Llama 3 8B - Free open model"
-        "anthropic/claude-3-haiku-20240307	200000	0.00000025	0.00000125	Claude 3 Haiku - Very fast and cheap"
-        "openai/gpt-4o-mini	128000	0.00000015	0.0000006	GPT-4o Mini - Smart and affordable"
-        "mistralai/mistral-7b-instruct	32768	0.00000007	0.00000007	Mistral 7B - Efficient open model"
-    )
-    
     # Sort and display models
     if [ ${#models[@]} -eq 0 ]; then
         log_error "No models found"
