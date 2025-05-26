@@ -21,7 +21,7 @@
 
 AIFixer is a terminal-native tool that uses AI to automatically fix, improve, and complete your code. Pipe in broken code, get working code back out. It's that simple.
 
-**Built for maximum portability:** Pure bash script that runs anywhere - from your local machine to ancient production servers, restricted environments, or that random Unix box you SSH'd into. No installations, no package managers, no version conflicts.
+**Built for maximum portability:** POSIX-compliant shell script that runs anywhere - from your local machine to ancient production servers, restricted environments, or that random Unix box you SSH'd into. No installations, no package managers, no version conflicts.
 
 **Perfect for:**
 - Implementing TODO comments
@@ -33,16 +33,16 @@ AIFixer is a terminal-native tool that uses AI to automatically fix, improve, an
 ## ⚡ Quick Start
 
 **Install in one command:**
-```bash
-curl -sL https://raw.githubusercontent.com/bradflaugher/aifixer/main/install.sh | bash
+```sh
+curl -sL https://raw.githubusercontent.com/bradflaugher/aifixer/main/install.sh | sh
 ```
 
 **Fix your first file:**
-```bash
+```sh
 cat broken_code.py | aifixer > fixed_code.py
 ```
 
-That's it! The installer asks for your API key once and puts `aifixer` on your PATH. No dependencies to install - it's pure bash that runs anywhere.
+That's it! The installer asks for your API key once and puts `aifixer` on your PATH. No dependencies to install - it's a POSIX-compliant shell script that runs on any Unix-like system.
 
 ## 🎯 See It in Action
 
@@ -130,18 +130,18 @@ async function fetchUserData(userId) {
 ## 🔧 Installation Options
 
 ### Automatic Installation (Recommended)
-```bash
-curl -sL https://raw.githubusercontent.com/bradflaugher/aifixer/main/install.sh | bash
+```sh
+curl -sL https://raw.githubusercontent.com/bradflaugher/aifixer/main/install.sh | sh
 ```
 
 ### Manual Installation
-```bash
+```sh
 # Clone the repo
 git clone https://github.com/bradflaugher/aifixer.git
 cd aifixer
 
 # Run installer with options
-./install.sh --help
+sh install.sh --help
 ```
 
 ### Installation Flags
@@ -154,7 +154,7 @@ cd aifixer
 
 ### Minimal Setup
 Just want the script? Download `aifixer.sh`, make it executable, and add your API key:
-```bash
+```sh
 chmod +x aifixer.sh
 export OPENROUTER_API_KEY="your-key-here"
 ```
@@ -162,7 +162,7 @@ export OPENROUTER_API_KEY="your-key-here"
 ## 💡 Usage Examples
 
 ### Basic Usage
-```bash
+```sh
 # Fix a single file
 cat buggy.py | aifixer > fixed.py
 
@@ -174,7 +174,7 @@ cat feature.py | aifixer > feature.py && git commit -am "AI fixes applied"
 ```
 
 ### Advanced Usage
-```bash
+```sh
 # Use specific AI model
 aifixer --model anthropic/claude-3-opus-20240229 < complex.py > improved.py
 
@@ -189,7 +189,7 @@ aifixer --code-only < messy.c > clean.c
 ```
 
 ### CI/CD Integration
-```bash
+```sh
 # Check if fixes are needed (non-zero exit if changes made)
 if cat src/*.py | aifixer --check-only; then
     echo "Code is clean!"
@@ -202,12 +202,12 @@ fi
 
 ### API Keys
 Set your OpenRouter API key (installer does this automatically):
-```bash
+```sh
 export OPENROUTER_API_KEY="your-key-here"
 ```
 
 ### Model Selection
-```bash
+```sh
 # List available models
 aifixer --list-models
 
@@ -219,7 +219,7 @@ export AIFIXER_DEFAULT_MODEL="anthropic/claude-3-haiku-20240307"
 ```
 
 ### Local AI with Ollama
-```bash
+```sh
 # Install Ollama and pull a model
 ollama pull codellama
 
@@ -231,7 +231,7 @@ aifixer --ollama-model codellama < code.py > fixed.py
 
 - **🖥️ Terminal Native** - No browser context switching
 - **⚡ Fast** - Streams output, handles large files efficiently  
-- **🪶 Ultra Portable** - Pure bash with zero dependencies beyond standard Unix tools
+- **🪶 Ultra Portable** - POSIX-compliant shell script with zero dependencies beyond standard Unix tools
 - **💰 Cost Aware** - Use free models or bring your own key
 - **🌐 Language Agnostic** - Works with any programming language
 - **🔗 Composable** - Perfect for pipes, scripts, and CI/CD
