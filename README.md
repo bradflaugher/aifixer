@@ -15,7 +15,7 @@
 
 ```bash
 # Install
-curl -s https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.py | sudo tee /usr/local/bin/aifixer >/dev/null && sudo chmod +x /usr/local/bin/aifixer
+curl -s https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.sh | sudo tee /usr/local/bin/aifixer >/dev/null && sudo chmod +x /usr/local/bin/aifixer
 
 # Set your API key
 export OPENROUTER_API_KEY=your_api_key
@@ -107,6 +107,7 @@ Most AI coding assistants pull you away from the command line into IDEs or brows
 
 - **✅ 100% Terminal-native** - No browser tabs or GUI apps to slow you down
 - **✅ Lightning-fast** - AI code fixes in seconds, right where you need them
+- **✅ Minimal dependencies** - Just bash and curl – works everywhere
 - **✅ Handles massive files** - Easily processes large codebases where other tools struggle or fail
 - **✅ Cost-effective** - Use powerful cloud models or free alternatives – you control the budget
 - **✅ Universal** - Works with any programming language or framework
@@ -129,23 +130,27 @@ cat api.js | aifixer --prompt "Add input validation to all API endpoints: " > se
 
 ### Prerequisites
 
-AIFixer requires Python and the `requests` library:
+AIFixer is written in bash and requires minimal dependencies:
+
+- **bash** (v4.0+) - Usually pre-installed on Linux/Mac
+- **curl** - For API requests
+- **jq** (optional but recommended) - For better JSON parsing
 
 ```bash
 # Debian/Ubuntu
-sudo apt install python3-requests
+sudo apt install curl jq
 
 # Fedora/RHEL/CentOS
-sudo dnf install python3-requests
+sudo dnf install curl jq
 
 # Arch Linux
-sudo pacman -S python-requests
+sudo pacman -S curl jq
+
+# Mac (with Homebrew)
+brew install curl jq
 
 # OpenSUSE
-sudo zypper install python3-requests
-
-# Other Linux/Mac with pip
-pip install requests   # or pip3 install requests on some systems
+sudo zypper install curl jq
 ```
 
 ### Install AIFixer
@@ -153,20 +158,47 @@ pip install requests   # or pip3 install requests on some systems
 **Quick install (Linux/Mac):**
 ```bash
 # One-line install (requires sudo)
-curl -s https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.py | sudo tee /usr/local/bin/aifixer >/dev/null && sudo chmod +x /usr/local/bin/aifixer
+curl -s https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.sh | sudo tee /usr/local/bin/aifixer >/dev/null && sudo chmod +x /usr/local/bin/aifixer
 ```
 
 **Alternative without sudo:**
 ```bash
 # For Homebrew users or if ~/.local/bin is in your PATH
 mkdir -p ~/.local/bin
-curl -s https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.py -o ~/.local/bin/aifixer
+curl -s https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.sh -o ~/.local/bin/aifixer
 chmod +x ~/.local/bin/aifixer
 ```
 
-**Windows users:**
-See [WINDOWS.md](./WINDOWS.md) for Windows installation instructions.
+### Windows Installation
 
+AIFixer can run on Windows using Git Bash, WSL, or Cygwin.
+
+**Option 1: Git Bash (Recommended)**
+1. Install [Git for Windows](https://git-scm.com/download/win) (includes Git Bash)
+2. Open Git Bash
+3. Run:
+   ```bash
+   # Download to your home directory
+   curl -s https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.sh -o ~/aifixer
+   chmod +x ~/aifixer
+   
+   # Add to PATH (add this to ~/.bashrc to make permanent)
+   export PATH="$HOME:$PATH"
+   ```
+
+**Option 2: Windows Subsystem for Linux (WSL)**
+1. Install WSL: `wsl --install` (in PowerShell as Administrator)
+2. Open WSL terminal
+3. Follow the Linux installation instructions above
+
+**Option 3: Native Windows (PowerShell)**
+```powershell
+# Download the script
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.sh" -OutFile "$env:USERPROFILE\aifixer.sh"
+
+# You'll need a bash interpreter like Git Bash to run it
+# Then run: bash ~/aifixer.sh
+```
 
 ## 🔑 Configuration
 
@@ -178,13 +210,16 @@ See [WINDOWS.md](./WINDOWS.md) for Windows installation instructions.
 # Linux/Mac
 export OPENROUTER_API_KEY=your_api_key
 
-# Windows
+# Windows (Git Bash)
+export OPENROUTER_API_KEY=your_api_key
+
+# Windows (PowerShell - if using WSL)
 $env:OPENROUTER_API_KEY = "your_api_key"
 ```
 
 For permanent configuration:
-- **Linux/Mac**: Add to `~/.bashrc` or `~/.zshrc`
-- **Windows**: Add to PowerShell profile or system environment variables
+- **Linux/Mac/Git Bash**: Add to `~/.bashrc` or `~/.zshrc`
+- **Windows PowerShell**: Add to PowerShell profile or system environment variables
 
 ### Ollama Setup (Optional for offline use)
 
@@ -205,6 +240,9 @@ cat typo_fix.js | aifixer --model openai/gpt-3.5-turbo > fixed.js
 
 # Use a free/local model with Ollama
 cat performance_bottleneck.js | aifixer --ollama-model codellama > optimized_code.js
+
+# Auto-select a free model
+cat code.py | aifixer --free > fixed_code.py
 ```
 
 ### List Available Models
@@ -215,6 +253,12 @@ aifixer --list-models
 
 # List local Ollama models
 aifixer --list-ollama-models
+
+# Sort models by context length
+aifixer --list-models --sort-by context
+
+# Show only top 10 cheapest models
+aifixer --list-models --num-models 10 --sort-by price
 ```
 
 ## 🧙‍♂️ Advanced Usage
@@ -227,6 +271,9 @@ cat poorly_documented.py | aifixer --prompt "Add comprehensive docstrings to all
 
 # Optimize a slow algorithm
 cat slow_algorithm.py | aifixer --prompt "Optimize this algorithm for better performance: " > optimized_algorithm.py
+
+# Convert code to a different style
+cat old_style.js | aifixer --prompt "Convert this to modern ES6+ syntax: " > modern_style.js
 ```
 
 ### Working with Entire Codebases
@@ -238,6 +285,27 @@ pip install codebase-to-text
 # Convert codebase to text, fix it, extract only one file
 codebase-to-text --input "~/projects/my_project" --output - --output_type "txt" | \
 aifixer --fix-file-only > fixed_file.py
+
+# List all files with TODOs in a codebase
+codebase-to-text --input . --output - | aifixer --list-todo-files
+
+# Fix a specific file from a codebase
+codebase-to-text --input . --output - | \
+aifixer --target-file "src/main.py" --fix-file-only > fixed_main.py
+```
+
+### Advanced Features
+
+```bash
+# Use fallback models if primary fails (great for free models)
+cat code.py | aifixer --free --max-fallbacks 3 > output.py
+
+# Enable verbose debugging
+cat code.py | aifixer --verbose --model gpt-4 > output.py
+
+# See help and examples
+aifixer --help
+aifixer --help-examples
 ```
 
 ## 📢 Spread the Word
