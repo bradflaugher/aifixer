@@ -1,508 +1,655 @@
-#!/usr/bin/env python3
-# aifixer.py — Terminal‑native AI coding assistant (v1.1.0 → improved)
+#!/usr/bin/env bash
+# aifixer.sh — Terminal‑native AI coding assistant (v1.1.0)
 
-import argparse
-import json
-import logging
-import os
-import platform
-import re
-import shutil
-import sys
-import threading
-import time
-from contextlib import contextmanager
-from textwrap import dedent
-from typing import Any, Dict, List, Optional
+set -euo pipefail
 
-import requests  # requires only `requests`
+VERSION="1.1.0"
+OPENROUTER_URL="https://openrouter.ai/api/v1"
+OLLAMA_URL="http://localhost:11434/api"
+REQUEST_TIMEOUT=10
 
-VERSION = "1.1.0"
-OPENROUTER_URL = "https://openrouter.ai/api/v1"
-OLLAMA_URL = "http://localhost:11434/api"
-REQUEST_TIMEOUT = 10  # seconds
+# Default values
+MODEL="anthropic/claude-3-sonnet-20240229"
+PROMPT="Fix the TODOs in the file below and output the full file: "
+VERBOSE=0
+DEBUG=0
+FIX_FILE_ONLY=0
+FREE=0
+MAX_FALLBACKS=2
+NUM_MODELS=20
+SORT_BY="price"
 
-# ─── Setup Logging ─────────────────────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(levelname)s: %(message)s",
-    stream=sys.stderr,
-)
-logger = logging.getLogger("aifixer")
-
+# Color codes for output (disabled if not in terminal)
+if [ -t 2 ]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[0;33m'
+    BLUE='\033[0;34m'
+    NC='\033[0m' # No Color
+else
+    RED=''
+    GREEN=''
+    YELLOW=''
+    BLUE=''
+    NC=''
+fi
 
 # ─── Utility Functions ────────────────────────────────────────────────────────
-def format_size(size_bytes: int) -> str:
-    """Convert bytes to human-readable form."""
-    if size_bytes == 0:
-        return "0B"
-    size_names = ("B", "KB", "MB", "GB", "TB")
-    i = 0
-    size = float(size_bytes)
-    while size >= 1024 and i < len(size_names) - 1:
-        size /= 1024
-        i += 1
-    return f"{size:.2f} {size_names[i]}"
 
+log_error() {
+    echo -e "${RED}ERROR: $*${NC}" >&2
+}
 
-def analyze_codebase_for_todos(text: str) -> List[str]:
-    """Return list of filenames (from '# File: ...') containing TODO or FIXME."""
-    file_pattern = r"# File: (.+)"
-    parts = re.split(file_pattern, text)[1:]
-    results = []
-    for fname, content in zip(parts[0::2], parts[1::2]):
-        if re.search(r"(?i)\bTODO\b|\bFIXME\b", content):
-            results.append(fname)
-    return results
+log_warning() {
+    echo -e "${YELLOW}WARNING: $*${NC}" >&2
+}
 
+log_info() {
+    echo -e "${GREEN}INFO: $*${NC}" >&2
+}
 
-def build_fix_prompt(base_prompt: str, fix_only: bool, target_file: Optional[str]) -> str:
-    """Return either the custom prompt or the 'fix-file-only' variant."""
-    if not fix_only:
-        return base_prompt
-    if target_file:
-        return (
-            f"Fix the TODOs in the file '{target_file}' from the codebase below. "
-            "Only return the complete fixed version of that file, nothing else. "
-            "Do not include any explanations, headers, or markdown formatting: "
-        )
-    return (
-        "Fix the TODOs in the code below. If this is a flattened codebase, "
-        "identify the file that has TODOs and only return the complete fixed "
-        "version of that file. Do not include any explanations, headers, or "
-        "markdown formatting: "
-    )
+log_debug() {
+    if [ $DEBUG -eq 1 ]; then
+        echo -e "${BLUE}DEBUG: $*${NC}" >&2
+    fi
+}
 
+# Check if jq is available for JSON parsing
+has_jq() {
+    command -v jq >/dev/null 2>&1
+}
 
-def extract_fixed_file(output: str) -> str:
-    """Strip markdown/code fences and return just the code."""
-    # First look for fenced code blocks
-    blocks = re.findall(r"```(?:\w+)?\s*([\s\S]+?)\s*```", output)
-    if blocks:
-        return max(blocks, key=len).strip()
+# Simple JSON parser for when jq is not available
+parse_json_value() {
+    local json="$1"
+    local key="$2"
+    echo "$json" | grep -o "\"$key\"[[:space:]]*:[[:space:]]*[^,}]*" | sed -E 's/^"[^"]*"[[:space:]]*:[[:space:]]*//' | sed 's/^"//' | sed 's/"$//'
+}
 
-    # Otherwise, remove introductory lines, headers, etc.
-    cleaned = re.sub(r"^#+ .*\n", "", output, flags=re.MULTILINE)
-    cleaned = re.sub(
-        r".*?(?=(?:def |class |import |package |<\?php|\<\!DOCTYPE|\<html))", "", cleaned, flags=re.DOTALL
-    )
-    return cleaned.strip()
+# Format bytes to human readable
+format_size() {
+    local size=$1
+    local units=("B" "KB" "MB" "GB" "TB")
+    local unit=0
+    
+    while [ $size -ge 1024 ] && [ $unit -lt 4 ]; do
+        size=$((size / 1024))
+        unit=$((unit + 1))
+    done
+    
+    echo "${size}${units[$unit]}"
+}
 
-
-@contextmanager
-def spinner(message: str):
-    """Simple terminal spinner with ASCII chars for universal compatibility."""
-    # Only show spinner when stderr is connected to a terminal
-    if not sys.stderr.isatty():
-        yield
+# Terminal spinner
+spinner() {
+    local message="$1"
+    local pid=$2
+    local chars="/-\|"
+    local i=0
+    
+    # Only show spinner if stderr is a terminal
+    if [ ! -t 2 ]; then
+        wait $pid
         return
+    fi
+    
+    while kill -0 $pid 2>/dev/null; do
+        printf "\r%s %c " "$message" "${chars:$i:1}" >&2
+        i=$(( (i+1) % 4 ))
+        sleep 0.1
+    done
+    printf "\r%*s\r" $((${#message} + 4)) "" >&2
+}
 
-    # Simple ASCII spinner chars that work everywhere
-    chars = ["-", "\\", "|", "/"]
-    stop = False
-
-    def run_spin():
-        idx = 0
-        while not stop:
-            sys.stderr.write(f"\r{message} {chars[idx]} ")
-            sys.stderr.flush()
-            time.sleep(0.1)
-            idx = (idx + 1) % len(chars)
-        sys.stderr.write("\r" + " " * (len(message) + 4) + "\r")
-        sys.stderr.flush()
-
-    thread = threading.Thread(target=run_spin)
-    thread.daemon = True  # Make thread daemon so it exits when main thread does
-    thread.start()
-    try:
-        yield
-    finally:
-        stop = True
-        thread.join(timeout=0.5)  # Add timeout to avoid hanging
-
+# Extract fixed file from AI output
+extract_fixed_file() {
+    local output="$1"
+    
+    # First try to extract from code blocks
+    local code_block=$(echo "$output" | sed -n '/^```/,/^```$/p' | sed '1d;$d')
+    if [ -n "$code_block" ]; then
+        echo "$code_block"
+        return
+    fi
+    
+    # Otherwise, clean up the output
+    echo "$output" | sed -E 's/^#+ .*$//' | sed '/^[[:space:]]*$/d'
+}
 
 # ─── Model Listing & Selection ───────────────────────────────────────────────────
-def get_free_models(session: requests.Session, sort_key: str = "price") -> List[str]:
-    """Return a list of free/cheap model IDs from OpenRouter, sorted by the given criteria.
-    Ensures diversity of model providers to avoid all-Gemini fallbacks."""
-    url = f"{OPENROUTER_URL}/models"
-    try:
-        resp = session.get(url, timeout=REQUEST_TIMEOUT)
-        resp.raise_for_status()
-        data = resp.json().get("data", [])
-    except Exception as e:
-        logger.error("Could not fetch OpenRouter models: %s", e)
-        sys.exit(1)
 
-    # Log all models for debugging
-    if logger.level <= logging.DEBUG:
-        for m in data:
-            if m.get("pricing"):
-                logger.debug(f"Model: {m['id']}, Prompt: {m['pricing'].get('prompt')}")
-
-    # Just get all models with pricing info, sorted by price
-    models = [
-        m for m in data
-        if m.get("pricing") and m.get("id") != "openrouter/auto"
-    ]
+fetch_openrouter_models() {
+    local num=$1
+    local sort_key=$2
     
-    # Sort by price (lowest first)
-    models.sort(key=lambda m: (
-        m["pricing"].get("prompt", float("inf")), 
-        -m.get("context_length", 0)
-    ))
+    log_info "Fetching OpenRouter models..."
     
-    # Get diverse models - we want different providers to avoid all-Gemini fallbacks
-    result = []
-    providers_seen = set()
+    local response=$(curl -s -m $REQUEST_TIMEOUT "$OPENROUTER_URL/models" 2>/dev/null)
+    if [ $? -ne 0 ]; then
+        log_error "Could not fetch OpenRouter models"
+        exit 1
+    fi
     
-    for m in models:
-        # Extract provider from model ID (e.g., "google" from "google/gemini-...")
-        provider = m["id"].split("/")[0] if "/" in m["id"] else "unknown"
-        
-        # Only add first model from each provider to ensure diversity
-        if provider not in providers_seen or len(result) < 2:
-            result.append(m["id"])
-            providers_seen.add(provider)
-        
-        # Stop when we have enough models
-        if len(result) >= 5:
-            break
+    # Parse and display models
+    if has_jq; then
+        echo "$response" | jq -r --arg sort "$sort_key" --argjson num "$num" '
+            .data[] | 
+            select(.pricing and .id != "openrouter/auto") |
+            {
+                id: .id,
+                context: (.context_length // 0),
+                prompt: .pricing.prompt,
+                completion: .pricing.completion,
+                description: (.description // "" | gsub("\n"; " ") | .[0:135])
+            }
+        ' | jq -s --arg sort "$sort_key" '
+            if $sort == "price" then
+                sort_by(.prompt, -.context)
+            elif $sort == "context" then
+                sort_by(-.context, .prompt)
+            else
+                sort_by(-.prompt, -.context)
+            end | limit($num; .[])
+        ' | jq -r '
+            @text "\(.id)\t\(.context)\t\(.prompt)\t\(.completion)\t\(.description)"
+        ' | column -t -s $'\t'
+    else
+        log_warning "jq not found, using basic parsing"
+        # Basic parsing without jq
+        echo "Model listing requires jq to be installed"
+    fi
+}
+
+get_free_models() {
+    local sort_key=$1
     
-    if not result:
-        logger.warning("No models found with pricing information")
-        return []
-        
-    logger.debug(f"Selected diverse models: {result}")
-    return result
+    local response=$(curl -s -m $REQUEST_TIMEOUT "$OPENROUTER_URL/models" 2>/dev/null)
+    if [ $? -ne 0 ]; then
+        log_error "Could not fetch OpenRouter models"
+        return 1
+    fi
+    
+    if has_jq; then
+        # Get diverse models from different providers
+        echo "$response" | jq -r '
+            .data[] | 
+            select(.pricing and .id != "openrouter/auto") |
+            {
+                id: .id,
+                provider: (.id | split("/")[0]),
+                prompt: .pricing.prompt,
+                context: (.context_length // 0)
+            }
+        ' | jq -s '
+            sort_by(.prompt, -.context) |
+            reduce .[] as $model ([]; 
+                if (length < 5) and 
+                   ((length < 2) or (($model.provider) as $p | map(.provider) | index($p) | not))
+                then . + [$model]
+                else .
+                end
+            ) | .[].id
+        '
+    else
+        # Fallback: just echo some known free models
+        echo "google/gemini-flash-1.5"
+        echo "meta-llama/llama-3-8b-instruct:free"
+    fi
+}
 
-
-def fetch_openrouter_models(
-    session: requests.Session,
-    num: int,
-    sort_key: str = "price",
-) -> None:
-    """Fetch & display top OpenRouter models."""
-    url = f"{OPENROUTER_URL}/models"
-    try:
-        resp = session.get(url, timeout=REQUEST_TIMEOUT)
-        resp.raise_for_status()
-        data = resp.json().get("data", [])
-    except Exception as e:
-        logger.error("Could not fetch OpenRouter models: %s", e)
-        sys.exit(1)
-
-    # filter & sort
-    models = [
-        m for m in data
-        if m.get("pricing") and m.get("id") != "openrouter/auto"
-    ]
-    sorters = {
-        "price": lambda m: (m["pricing"].get("prompt", float("inf")), -m.get("context_length", 0)),
-        "best":  lambda m: (-float(m["pricing"].get("prompt", 0)), -m.get("context_length", 0)),
-        "context": lambda m: (-int(m.get("context_length", 0)), m["pricing"].get("prompt", float("inf"))),
-    }
-    models.sort(key=sorters[sort_key])
-    chosen = models[:num]
-
-    # table header
-    headers = ["Model ID", "Context", "Prompt", "Completion", "Description"]
-    widths = [len(h) for h in headers]
-    for m in chosen:
-        widths[0] = max(widths[0], len(m["id"]))
-        widths[1] = max(widths[1], len(str(m.get("context_length", ""))))
-        widths[2] = max(widths[2], len(str(m["pricing"]["prompt"])))
-        widths[3] = max(widths[3], len(str(m["pricing"]["completion"])))
-
-    hdr = " | ".join(f"{h:<{widths[i]}}" for i, h in enumerate(headers[:-1])) + f" | {headers[-1]}"
-    print(hdr)
-    print("-" * len(hdr))
-
-    for m in chosen:
-        desc = m.get("description", "").replace("\n", " ")
-        if len(desc) > 135:
-            desc = desc[:135] + "..."
-        row = [
-            m["id"],
-            str(m.get("context_length", "")),
-            str(m["pricing"]["prompt"]),
-            str(m["pricing"]["completion"]),
-            desc,
-        ]
-        line = " | ".join(f"{row[i]:<{widths[i]}}" for i in range(len(row)-1))
-        print(f"{line} | {row[-1]}")
-
-
-def fetch_ollama_models(session: requests.Session) -> None:
-    """Fetch & display available Ollama models."""
-    url = f"{OLLAMA_URL}/tags"
-    try:
-        resp = session.get(url, timeout=REQUEST_TIMEOUT)
-        resp.raise_for_status()
-        models = resp.json().get("models", [])
-    except requests.exceptions.ConnectionError:
-        logger.error("Cannot connect to Ollama at %s", url)
+fetch_ollama_models() {
+    log_info "Fetching Ollama models..."
+    
+    local response=$(curl -s -m $REQUEST_TIMEOUT "$OLLAMA_URL/tags" 2>/dev/null)
+    if [ $? -ne 0 ]; then
+        log_error "Cannot connect to Ollama at $OLLAMA_URL"
         return
-    except Exception as e:
-        logger.error("Error fetching Ollama models: %s", e)
-        return
-
-    headers = ["Name", "Size", "Modified", "Family"]
-    widths = [len(h) for h in headers]
-    for m in models:
-        widths[0] = max(widths[0], len(m.get("name", "")))
-        widths[1] = max(widths[1], len(format_size(m.get("size", 0))))
-        widths[2] = max(widths[2], len(m.get("modified", "")))
-        widths[3] = max(widths[3], len(m.get("details", {}).get("family", "")))
-
-    hdr = " | ".join(f"{h:<{widths[i]}}" for i, h in enumerate(headers))
-    print(hdr)
-    print("-" * len(hdr))
-
-    for m in models:
-        fam = m["details"].get("family", "")
-        row = [
-            m["name"],
-            format_size(m["size"]),
-            m["modified"],
-            fam,
-        ]
-        print(" | ".join(f"{row[i]:<{widths[i]}}" for i in range(len(row))))
-
+    fi
+    
+    if has_jq; then
+        echo "$response" | jq -r '.models[] | 
+            [.name, (.size | tostring), .modified, .details.family // ""] | 
+            @tsv' | column -t
+    else
+        log_warning "jq not found, cannot parse Ollama models"
+    fi
+}
 
 # ─── Processing Functions ─────────────────────────────────────────────────────
-def process_with_openrouter(
-    session: requests.Session,
-    api_key: str,
-    model: str,
-    prompt: str,
-    input_text: str,
-    fix_only: bool,
-    target_file: Optional[str],
-) -> str:
-    """Send prompt+input to OpenRouter and return AI response (or fixed code)."""
-    p = build_fix_prompt(prompt, fix_only, target_file) + input_text
-    url = f"{OPENROUTER_URL}/chat/completions"
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+build_fix_prompt() {
+    local base_prompt="$1"
+    local fix_only=$2
+    local target_file="$3"
     
-    # Use simple payload structure - only include parameters defined in OpenRouter docs
-    # Avoid limiting max_tokens to let the model produce full output
-    payload = {
-        "model": model, 
-        "messages": [{"role": "user", "content": p}],
-        "temperature": 0.7  # Good balance for code generation
-    }
+    if [ $fix_only -eq 0 ]; then
+        echo "$base_prompt"
+    elif [ -n "$target_file" ]; then
+        echo "Fix the TODOs in the file '$target_file' from the codebase below. Only return the complete fixed version of that file, nothing else. Do not include any explanations, headers, or markdown formatting: "
+    else
+        echo "Fix the TODOs in the code below. If this is a flattened codebase, identify the file that has TODOs and only return the complete fixed version of that file. Do not include any explanations, headers, or markdown formatting: "
+    fi
+}
+
+process_with_openrouter() {
+    local api_key="$1"
+    local model="$2"
+    local prompt="$3"
+    local input_text="$4"
+    local fix_only=$5
+    local target_file="$6"
     
-    logger.debug(f"Using model: {model}")
-
-    resp = session.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
-    resp.raise_for_status()
-    content = resp.json()["choices"][0]["message"]["content"]
-    return extract_fixed_file(content) if fix_only else content
-
-
-def process_with_ollama(
-    session: requests.Session,
-    model: str,
-    prompt: str,
-    input_text: str,
-    fix_only: bool,
-    target_file: Optional[str],
-) -> str:
-    """Send prompt+input to local Ollama and return AI response (or fixed code)."""
-    p = build_fix_prompt(prompt, fix_only, target_file) + input_text
-    url = f"{OLLAMA_URL}/chat"
-    payload = {"model": model, "messages": [{"role": "user", "content": p}]}
-
-    try:
-        resp = session.post(url, json=payload, timeout=REQUEST_TIMEOUT)
-        resp.raise_for_status()
-        content = resp.json().get("message", {}).get("content", "")
-    except requests.exceptions.ConnectionError:
-        logger.error("Cannot connect to Ollama at %s", url)
-        sys.exit(1)
-    except Exception as e:
-        logger.error("Ollama error (%s): %s", getattr(resp, "status_code", ""), e)
-        sys.exit(1)
-
-    return extract_fixed_file(content) if fix_only else content
-
-
-# ─── CLI & Main ───────────────────────────────────────────────────────────────
-def print_version() -> None:
-    """Print a simple version message."""
-    print(f"AIFixer v{VERSION}", file=sys.stderr)
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="AIFixer — Terminal-native AI coding assistant",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-
-    # Global flags
-    parser.add_argument("--version", action="version", version=VERSION)
-    parser.add_argument("--help-examples", action="store_true")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose debugging output")
-
-    # Model selection
-    mg = parser.add_argument_group("Model Selection")
-    mg.add_argument("--model", default="anthropic/claude-3-sonnet-20240229")
-    mg.add_argument("--ollama-model")
-    mg.add_argument("--free", action="store_true")
-    mg.add_argument("--max-fallbacks", type=int, default=2, 
-                   help="Number of fallback models to try if free model fails (default: 2)")
-
-    # Listing
-    lg = parser.add_argument_group("Model Listing")
-    lg.add_argument("--list-models", action="store_true")
-    lg.add_argument("--list-ollama-models", action="store_true")
-    lg.add_argument("--num-models", type=int, default=20)
-    lg.add_argument("--sort-by", choices=["price", "best", "context"], default="price")
-
-    # Prompt & file options
-    pg = parser.add_argument_group("Prompt & File Options")
-    pg.add_argument("--prompt", default="Fix the TODOs in the file below and output the full file: ")
-    pg.add_argument("--fix-file-only", action="store_true")
-    pg.add_argument("--target-file")
-    pg.add_argument("--list-todo-files", action="store_true")
-
-    parser.add_argument("text", nargs="*", help="Input text (or use stdin)")
-
-    args = parser.parse_args()
+    local full_prompt=$(build_fix_prompt "$prompt" $fix_only "$target_file")
+    full_prompt="${full_prompt}${input_text}"
     
-    # Set up logging level based on verbose flag
-    if args.verbose:
-        logger.setLevel(logging.DEBUG)
-        logger.debug("Debug logging enabled")
+    log_debug "Using model: $model"
     
-    session = requests.Session()
+    # Build JSON payload
+    local payload=$(printf '{"model": "%s", "messages": [{"role": "user", "content": %s}], "temperature": 0.7}' \
+        "$model" "$(echo -n "$full_prompt" | jq -Rs .)")
+    
+    local response=$(curl -s -m $REQUEST_TIMEOUT \
+        -H "Authorization: Bearer $api_key" \
+        -H "Content-Type: application/json" \
+        -d "$payload" \
+        "$OPENROUTER_URL/chat/completions" 2>/dev/null)
+    
+    if [ $? -ne 0 ]; then
+        log_error "Request failed"
+        return 1
+    fi
+    
+    # Check for error in response
+    if echo "$response" | grep -q '"error"'; then
+        local error_msg=$(echo "$response" | jq -r '.error.message // .error // "Unknown error"' 2>/dev/null || echo "Unknown error")
+        log_error "API error: $error_msg"
+        return 1
+    fi
+    
+    # Extract content
+    local content
+    if has_jq; then
+        content=$(echo "$response" | jq -r '.choices[0].message.content // empty')
+    else
+        content=$(echo "$response" | grep -o '"content":"[^"]*"' | sed 's/"content":"//' | sed 's/"$//')
+    fi
+    
+    if [ -z "$content" ]; then
+        log_error "Empty response from API"
+        return 1
+    fi
+    
+    if [ $fix_only -eq 1 ]; then
+        extract_fixed_file "$content"
+    else
+        echo "$content"
+    fi
+}
 
-    # Examples, listings, etc.
-    if args.help_examples:
-        print(dedent(  # kept short for clarity
-            """
-            Examples:
-              cat file.py | aifixer --model anthro/claude > fixed.py
-              aifixer --list-models
-            """
-        ), file=sys.stderr)
-        return
+process_with_ollama() {
+    local model="$1"
+    local prompt="$2"
+    local input_text="$3"
+    local fix_only=$4
+    local target_file="$5"
+    
+    local full_prompt=$(build_fix_prompt "$prompt" $fix_only "$target_file")
+    full_prompt="${full_prompt}${input_text}"
+    
+    # Build JSON payload
+    local payload=$(printf '{"model": "%s", "messages": [{"role": "user", "content": %s}]}' \
+        "$model" "$(echo -n "$full_prompt" | jq -Rs .)")
+    
+    local response=$(curl -s -m $REQUEST_TIMEOUT \
+        -H "Content-Type: application/json" \
+        -d "$payload" \
+        "$OLLAMA_URL/chat" 2>/dev/null)
+    
+    if [ $? -ne 0 ]; then
+        log_error "Cannot connect to Ollama at $OLLAMA_URL"
+        exit 1
+    fi
+    
+    # Extract content
+    local content
+    if has_jq; then
+        content=$(echo "$response" | jq -r '.message.content // empty')
+    else
+        content=$(echo "$response" | grep -o '"content":"[^"]*"' | sed 's/"content":"//' | sed 's/"$//')
+    fi
+    
+    if [ $fix_only -eq 1 ]; then
+        extract_fixed_file "$content"
+    else
+        echo "$content"
+    fi
+}
 
-    if args.list_models:
-        fetch_openrouter_models(session, args.num_models, sort_key=args.sort_by)
-        return
+# ─── TODO File Analysis ────────────────────────────────────────────────────────
 
-    if args.list_ollama_models:
-        fetch_ollama_models(session)
-        return
+analyze_codebase_for_todos() {
+    local text="$1"
+    echo "$text" | awk '
+        /^# File: / {
+            file = substr($0, 9)
+            content = ""
+        }
+        /^# File: /,/^# File: |$/ {
+            if (!/^# File: /) content = content "\n" $0
+        }
+        /TODO|FIXME/ {
+            if (file) print file
+            file = ""
+        }
+    ' | sort -u
+}
 
-    # Print a simple version message for interactive use
-    if sys.stderr.isatty():
-        print_version()
+# ─── Help Functions ────────────────────────────────────────────────────────────
 
-    # Free model auto‑select with fallbacks
-    fallback_models = []
-    if args.free and not args.ollama_model:
-        with spinner("Selecting free/cheap models…"):
-            free_models = get_free_models(session, sort_key=args.sort_by)
-            
-        if not free_models:
-            logger.error("No free/cheap models found")
-            sys.exit(1)
-            
-        # Set primary model and keep others as fallbacks
-        args.model = free_models[0]
-        fallback_models = free_models[1:args.max_fallbacks+1]  # Limit fallbacks
+show_help() {
+    cat << EOF
+AIFixer — Terminal-native AI coding assistant
+
+Usage: aifixer [OPTIONS] [TEXT...]
+
+Options:
+  --version                Show version
+  --help-examples          Show usage examples
+  -v, --verbose           Enable verbose debugging output
+
+Model Selection:
+  --model MODEL           Model to use (default: $MODEL)
+  --ollama-model MODEL    Use Ollama model instead
+  --free                  Auto-select free/cheap model
+  --max-fallbacks N       Number of fallback models (default: $MAX_FALLBACKS)
+
+Model Listing:
+  --list-models           List OpenRouter models
+  --list-ollama-models    List Ollama models
+  --num-models N          Number of models to show (default: $NUM_MODELS)
+  --sort-by TYPE          Sort by: price, best, context (default: $SORT_BY)
+
+Prompt & File Options:
+  --prompt TEXT           Custom prompt (default: Fix TODOs...)
+  --fix-file-only         Only output fixed code, no explanations
+  --target-file FILE      Target specific file for fixes
+  --list-todo-files       List files containing TODOs
+
+Environment:
+  OPENROUTER_API_KEY      Required for OpenRouter models
+
+EOF
+}
+
+show_examples() {
+    cat << EOF
+Examples:
+  # Fix TODOs in a file
+  cat file.py | aifixer --model anthropic/claude-3-sonnet > fixed.py
+  
+  # Use a free model
+  cat code.js | aifixer --free > output.js
+  
+  # List available models
+  aifixer --list-models
+  
+  # Use local Ollama
+  cat main.go | aifixer --ollama-model codellama > fixed.go
+  
+  # Custom prompt
+  echo "Explain this:" | aifixer --prompt "Please explain: "
+
+EOF
+}
+
+# ─── Main ──────────────────────────────────────────────────────────────────────
+
+main() {
+    local input_text=""
+    local ollama_model=""
+    local target_file=""
+    local list_models=0
+    local list_ollama=0
+    local list_todos=0
+    local help_examples=0
+    local show_version=0
+    local text_args=()
+    
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --version)
+                show_version=1
+                shift
+                ;;
+            --help|-h)
+                show_help
+                exit 0
+                ;;
+            --help-examples)
+                help_examples=1
+                shift
+                ;;
+            -v|--verbose)
+                VERBOSE=1
+                DEBUG=1
+                shift
+                ;;
+            --model)
+                MODEL="$2"
+                shift 2
+                ;;
+            --ollama-model)
+                ollama_model="$2"
+                shift 2
+                ;;
+            --free)
+                FREE=1
+                shift
+                ;;
+            --max-fallbacks)
+                MAX_FALLBACKS="$2"
+                shift 2
+                ;;
+            --list-models)
+                list_models=1
+                shift
+                ;;
+            --list-ollama-models)
+                list_ollama=1
+                shift
+                ;;
+            --num-models)
+                NUM_MODELS="$2"
+                shift 2
+                ;;
+            --sort-by)
+                SORT_BY="$2"
+                shift 2
+                ;;
+            --prompt)
+                PROMPT="$2"
+                shift 2
+                ;;
+            --fix-file-only)
+                FIX_FILE_ONLY=1
+                shift
+                ;;
+            --target-file)
+                target_file="$2"
+                shift 2
+                ;;
+            --list-todo-files)
+                list_todos=1
+                shift
+                ;;
+            --)
+                shift
+                text_args+=("$@")
+                break
+                ;;
+            -*)
+                log_error "Unknown option: $1"
+                show_help
+                exit 1
+                ;;
+            *)
+                text_args+=("$1")
+                shift
+                ;;
+        esac
+    done
+    
+    # Handle special actions
+    if [ $show_version -eq 1 ]; then
+        echo "AIFixer v$VERSION" >&2
+        exit 0
+    fi
+    
+    if [ $help_examples -eq 1 ]; then
+        show_examples
+        exit 0
+    fi
+    
+    if [ $list_models -eq 1 ]; then
+        fetch_openrouter_models $NUM_MODELS "$SORT_BY"
+        exit 0
+    fi
+    
+    if [ $list_ollama -eq 1 ]; then
+        fetch_ollama_models
+        exit 0
+    fi
+    
+    # Print version for interactive use
+    if [ -t 2 ]; then
+        echo "AIFixer v$VERSION" >&2
+    fi
+    
+    # Get input text
+    if [ ${#text_args[@]} -gt 0 ]; then
+        input_text="${text_args[*]}"
+    elif [ ! -t 0 ]; then
+        input_text=$(cat)
+    else
+        show_help
+        exit 0
+    fi
+    
+    # List TODO files if requested
+    if [ $list_todos -eq 1 ]; then
+        analyze_codebase_for_todos "$input_text"
+        exit 0
+    fi
+    
+    # Free model selection
+    local fallback_models=()
+    if [ $FREE -eq 1 ] && [ -z "$ollama_model" ]; then
+        (
+            echo -n "Selecting free/cheap models... " >&2
+            free_models=$(get_free_models "$SORT_BY")
+            echo "done" >&2
+        ) &
+        spinner "Selecting free/cheap models..." $!
         
-        logger.info(f"Selected model: {args.model}")
-        if fallback_models:
-            logger.info(f"Fallback models: {', '.join(fallback_models)}")
-
-    # Gather input_text
-    if args.text:
-        input_text = " ".join(args.text)
-    elif not sys.stdin.isatty():
-        input_text = sys.stdin.read()
-    else:
-        parser.print_help(sys.stderr)
-        return
-
-    # List TODO files
-    if args.list_todo_files:
-        todos = analyze_codebase_for_todos(input_text)
-        out = "\n".join(todos) if todos else "No TODOs found."
-        print(out)
-        return
-
-    # Process
-    api_key = os.getenv("OPENROUTER_API_KEY", "")
-    if not args.ollama_model and not api_key:
-        logger.error("OPENROUTER_API_KEY not set; export it and retry.")
-        sys.exit(1)
-
-    start_time = time.time()
-    current_model = args.model  # Track the current model being used
+        if [ -z "$free_models" ]; then
+            log_error "No free/cheap models found"
+            exit 1
+        fi
+        
+        # Set primary model and fallbacks
+        MODEL=$(echo "$free_models" | head -n1)
+        mapfile -t fallback_models < <(echo "$free_models" | tail -n+2 | head -n$MAX_FALLBACKS)
+        
+        log_info "Selected model: $MODEL"
+        if [ ${#fallback_models[@]} -gt 0 ]; then
+            log_info "Fallback models: ${fallback_models[*]}"
+        fi
+    fi
     
-    try:
-        if args.ollama_model:
-            current_model = args.ollama_model
-            with spinner(f"Processing via Ollama ({current_model})…"):
-                result = process_with_ollama(
-                    session, current_model, args.prompt,
-                    input_text, args.fix_file_only, args.target_file
-                )
-        else:
-            # Initial attempt with primary model
-            try:
-                with spinner(f"Processing via OpenRouter ({current_model})…"):
-                    result = process_with_openrouter(
-                        session, api_key, current_model, args.prompt,
-                        input_text, args.fix_file_only, args.target_file
-                    )
-            except Exception as e:
-                # If primary model fails and we have fallbacks, try them
-                if fallback_models:
-                    logger.warning(f"Error with model {current_model}: {e} - Trying fallback models...")
-                    
-                    # Try each fallback model in sequence
-                    for model_id in fallback_models:
-                        current_model = model_id  # Update current model for correct display
-                        try:
-                            logger.info(f"Trying fallback model: {current_model}")
-                            with spinner(f"Processing via OpenRouter ({current_model})…"):
-                                result = process_with_openrouter(
-                                    session, api_key, current_model, args.prompt,
-                                    input_text, args.fix_file_only, args.target_file
-                                )
-                            logger.info(f"✓ Fallback model {current_model} succeeded")
-                            break  # Success! Exit the loop
-                        except Exception as fallback_e:
-                            logger.warning(f"Fallback model {current_model} failed: {fallback_e}")
-                            continue  # Try the next model
-                    else:
-                        # If we get here, all fallbacks failed
-                        logger.error("All models failed")
-                        raise e  # Re-raise the original error
-                else:
-                    # No fallbacks available, re-raise the error
-                    raise
+    # Check API key
+    local api_key="${OPENROUTER_API_KEY:-}"
+    if [ -z "$ollama_model" ] && [ -z "$api_key" ]; then
+        log_error "OPENROUTER_API_KEY not set; export it and retry."
+        exit 1
+    fi
+    
+    # Process the request
+    local start_time=$(date +%s)
+    local current_model="$MODEL"
+    local result=""
+    local success=0
+    
+    if [ -n "$ollama_model" ]; then
+        current_model="$ollama_model"
+        (
+            result=$(process_with_ollama "$current_model" "$PROMPT" "$input_text" $FIX_FILE_ONLY "$target_file")
+            echo "$result" > /tmp/aifixer_result_$$
+        ) &
+        spinner "Processing via Ollama ($current_model)..." $!
+        result=$(cat /tmp/aifixer_result_$$ 2>/dev/null)
+        rm -f /tmp/aifixer_result_$$
+        success=1
+    else
+        # Try primary model first
+        (
+            result=$(process_with_openrouter "$api_key" "$current_model" "$PROMPT" "$input_text" $FIX_FILE_ONLY "$target_file" 2>&1)
+            echo "$?" > /tmp/aifixer_status_$$
+            echo "$result" > /tmp/aifixer_result_$$
+        ) &
+        spinner "Processing via OpenRouter ($current_model)..." $!
+        
+        local status=$(cat /tmp/aifixer_status_$$ 2>/dev/null || echo "1")
+        result=$(cat /tmp/aifixer_result_$$ 2>/dev/null)
+        rm -f /tmp/aifixer_status_$$ /tmp/aifixer_result_$$
+        
+        if [ "$status" -eq 0 ]; then
+            success=1
+        elif [ ${#fallback_models[@]} -gt 0 ]; then
+            log_warning "Error with model $current_model - Trying fallback models..."
+            
+            # Try fallback models
+            for model in "${fallback_models[@]}"; do
+                current_model="$model"
+                log_info "Trying fallback model: $current_model"
                 
-    except KeyboardInterrupt:
-        logger.warning("Operation cancelled by user.")
-        sys.exit(1)
-    except Exception as e:
-        logger.error(f"Error: {e}")
-        sys.exit(1)
+                (
+                    result=$(process_with_openrouter "$api_key" "$current_model" "$PROMPT" "$input_text" $FIX_FILE_ONLY "$target_file" 2>&1)
+                    echo "$?" > /tmp/aifixer_status_$$
+                    echo "$result" > /tmp/aifixer_result_$$
+                ) &
+                spinner "Processing via OpenRouter ($current_model)..." $!
+                
+                status=$(cat /tmp/aifixer_status_$$ 2>/dev/null || echo "1")
+                result=$(cat /tmp/aifixer_result_$$ 2>/dev/null)
+                rm -f /tmp/aifixer_status_$$ /tmp/aifixer_result_$$
+                
+                if [ "$status" -eq 0 ]; then
+                    log_info "✓ Fallback model $current_model succeeded"
+                    success=1
+                    break
+                else
+                    log_warning "Fallback model $current_model failed"
+                fi
+            done
+        fi
+    fi
+    
+    if [ $success -eq 0 ]; then
+        log_error "All models failed"
+        exit 1
+    fi
+    
+    # Show completion message
+    local end_time=$(date +%s)
+    local elapsed=$((end_time - start_time))
+    if [ -t 2 ]; then
+        log_info "Completed in ${elapsed}s with $current_model ✓"
+    fi
+    
+    # Output result
+    echo "$result"
+}
 
-    # Show completion message with timing
-    elapsed = time.time() - start_time
-    if sys.stderr.isatty():
-        logger.info(f"Completed in {elapsed:.1f}s with {current_model} ✓")
-
-    # AI output → stdout (for piping)
-    sys.stdout.write(result)
-
-
-if __name__ == "__main__":
-    main()
+# Run main function
+main "$@"
