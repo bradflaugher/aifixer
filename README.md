@@ -21,6 +21,8 @@
 
 AIFixer is a terminal-native tool that uses AI to automatically fix, improve, and complete your code. Pipe in broken code, get working code back out. It's that simple.
 
+**Built for maximum portability:** Pure bash script that runs anywhere - from your local machine to ancient production servers, restricted environments, or that random Unix box you SSH'd into. No installations, no package managers, no version conflicts.
+
 **Perfect for:**
 - Implementing TODO comments
 - Fixing syntax errors and bugs  
@@ -40,7 +42,7 @@ curl -sL https://raw.githubusercontent.com/bradflaugher/aifixer/main/install.sh 
 cat broken_code.py | aifixer > fixed_code.py
 ```
 
-That's it! The installer handles dependencies, asks for your API key once, and puts `aifixer` on your PATH.
+That's it! The installer asks for your API key once and puts `aifixer` on your PATH. No dependencies to install - it's pure bash that runs anywhere.
 
 ## 🎯 See It in Action
 
@@ -147,7 +149,7 @@ cd aifixer
 |------|-------------|
 | `--prefix DIR` | Install to custom directory |
 | `--api-key KEY` | Set API key non-interactively |
-| `--skip-deps` | Skip dependency checks |
+| `--skip-deps` | Skip checks for basic Unix utilities |
 | `--skip-api-key` | Don't modify shell configs |
 
 ### Minimal Setup
@@ -229,7 +231,7 @@ aifixer --ollama-model codellama < code.py > fixed.py
 
 - **🖥️ Terminal Native** - No browser context switching
 - **⚡ Fast** - Streams output, handles large files efficiently  
-- **🪶 Lightweight** - Just bash + curl, no heavy dependencies
+- **🪶 Ultra Portable** - Pure bash with zero dependencies beyond standard Unix tools
 - **💰 Cost Aware** - Use free models or bring your own key
 - **🌐 Language Agnostic** - Works with any programming language
 - **🔗 Composable** - Perfect for pipes, scripts, and CI/CD
