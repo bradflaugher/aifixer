@@ -170,26 +170,12 @@ get_free_models() {
     fi
     
     if has_jq; then
-        # Get diverse models from different providers
+        # Get diverse free models from different providers
         echo "$response" | jq -r '
             .data[] | 
-            select(.pricing and .id != "openrouter/auto") |
-            {
-                id: .id,
-                provider: (.id | split("/")[0]),
-                prompt: .pricing.prompt,
-                context: (.context_length // 0)
-            }
-        ' | jq -s '
-            sort_by(.prompt, -.context) |
-            reduce .[] as $model ([]; 
-                if (length < 5) and 
-                   ((length < 2) or (($model.provider) as $p | map(.provider) | index($p) | not))
-                then . + [$model]
-                else .
-                end
-            ) | .[].id
-        '
+            select(.pricing.prompt == "0") |
+            .id
+        ' | head -5
     else
         # Fallback: just echo some known free models
         echo "google/gemini-flash-1.5"
@@ -502,7 +488,7 @@ main() {
     
     # Handle special actions
     if [ $show_version -eq 1 ]; then
-        echo "AIFixer v$VERSION" >&2
+        echo "$VERSION"
         exit 0
     fi
     
@@ -538,19 +524,27 @@ main() {
     
     # List TODO files if requested
     if [ $list_todos -eq 1 ]; then
-        analyze_codebase_for_todos "$input_text"
+        local todo_files=$(analyze_codebase_for_todos "$input_text")
+        if [ -z "$todo_files" ]; then
+            echo "No files with TODOs found"
+        else
+            echo "$todo_files"
+        fi
         exit 0
     fi
     
     # Free model selection
     local fallback_models=()
     if [ $FREE -eq 1 ] && [ -z "$ollama_model" ]; then
-        (
-            echo -n "Selecting free/cheap models... " >&2
-            free_models=$(get_free_models "$SORT_BY")
-            echo "done" >&2
-        ) &
-        spinner "Selecting free/cheap models..." $!
+        # Get free models in background
+        {
+            get_free_models "$SORT_BY" > /tmp/aifixer_free_models_$$
+        } &
+        local pid=$!
+        spinner "Selecting free/cheap models..." $pid
+        wait $pid
+        local free_models=$(cat /tmp/aifixer_free_models_$$ 2>/dev/null)
+        rm -f /tmp/aifixer_free_models_$$
         
         if [ -z "$free_models" ]; then
             log_error "No free/cheap models found"
