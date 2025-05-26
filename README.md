@@ -259,7 +259,5 @@ This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) 
 ---
 
 <p align="center">
-  <em>AI should augment your workflow, not replace it.</em>
-  <br>
   <strong>Happy coding! 🚀</strong>
 </p>
