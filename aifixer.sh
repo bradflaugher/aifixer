@@ -1,9 +1,9 @@
-#!/usr/bin/env bash
-# aifixer.sh — Terminal‑native AI coding assistant (v1.1.0)
+#!/bin/sh
+# aifixer.sh — Terminal‑native AI coding assistant POSIX compliant
 
-set -euo pipefail
+set -eu
 
-VERSION="1.4.0"
+VERSION="1.5.0"
 OPENROUTER_URL="https://openrouter.ai/api/v1"
 OLLAMA_URL="http://localhost:11434/api"
 REQUEST_TIMEOUT=60
@@ -37,74 +37,82 @@ fi
 # ─── Utility Functions ────────────────────────────────────────────────────────
 
 log_error() {
-    echo -e "${RED}ERROR: $*${NC}" >&2
+    printf "${RED}ERROR: %s${NC}\n" "$*" >&2
 }
 
 log_warning() {
-    echo -e "${YELLOW}WARNING: $*${NC}" >&2
+    printf "${YELLOW}WARNING: %s${NC}\n" "$*" >&2
 }
 
 log_info() {
-    echo -e "${GREEN}INFO: $*${NC}" >&2
+    printf "${GREEN}INFO: %s${NC}\n" "$*" >&2
 }
 
 log_debug() {
     if [ $DEBUG -eq 1 ]; then
-        echo -e "${BLUE}DEBUG: $*${NC}" >&2
+        printf "${BLUE}DEBUG: %s${NC}\n" "$*" >&2
     fi
 }
 
-# JSON utilities for native bash parsing
+# JSON utilities for native shell parsing
 parse_json_value() {
-    local json="$1"
-    local key="$2"
+    json="$1"
+    key="$2"
     # Extract value for a given key from JSON
     echo "$json" | grep -o "\"$key\"[[:space:]]*:[[:space:]]*[^,}]*" | sed -E 's/^"[^"]*"[[:space:]]*:[[:space:]]*//' | sed 's/^"//' | sed 's/"$//' | sed 's/,$//'
 }
 
 # Extract JSON array elements
 parse_json_array() {
-    local json="$1"
-    local key="$2"
+    json="$1"
+    key="$2"
     # Extract array for a given key
-    local array_start="\"${key}\"[[:space:]]*:[[:space:]]*\["
-    if [[ "$json" =~ $array_start ]]; then
-        local remaining="${json#*$array_start}"
+    array_start="\"${key}\"[[:space:]]*:[[:space:]]*\["
+    if echo "$json" | grep -q "$array_start"; then
+        remaining=$(echo "$json" | sed "s/.*$array_start//")
         echo "$remaining" | sed 's/\].*$//' | tr ',' '\n' | sed 's/^[[:space:]]*"//' | sed 's/"[[:space:]]*$//'
     fi
 }
 
 # Escape string for JSON
 escape_json_string() {
-    local str="$1"
-    str="${str//\\/\\\\}"
-    str="${str//\"/\\\"}"
-    str="${str//$'\n'/\\n}"
-    str="${str//$'\r'/\\r}"
-    str="${str//$'\t'/\\t}"
+    str="$1"
+    # Use sed for portable string replacement
+    str=$(echo "$str" | sed 's/\\/\\\\/g')
+    str=$(echo "$str" | sed 's/"/\\"/g')
+    str=$(echo "$str" | sed 's/	/\\t/g')
+    str=$(echo "$str" | sed ':a;N;$!ba;s/\n/\\n/g')
     echo "$str"
 }
 
 # Format bytes to human readable
 format_size() {
-    local size=$1
-    local units=("B" "KB" "MB" "GB" "TB")
-    local unit=0
+    size=$1
+    units="B KB MB GB TB"
+    unit_idx=0
     
-    while [ $size -ge 1024 ] && [ $unit -lt 4 ]; do
+    while [ $size -ge 1024 ] && [ $unit_idx -lt 4 ]; do
         size=$((size / 1024))
-        unit=$((unit + 1))
+        unit_idx=$((unit_idx + 1))
     done
     
-    echo "${size}${units[$unit]}"
+    # Get unit name
+    i=0
+    for unit in $units; do
+        if [ $i -eq $unit_idx ]; then
+            echo "${size}${unit}"
+            break
+        fi
+        i=$((i + 1))
+    done
 }
 
 # Terminal spinner
 spinner() {
-    local message="$1"
-    local pid=$2
-    local chars="/-\|"
-    local i=0
+    message="$1"
+    pid=$2
+    chars="/-\|"
+    i=0
     
     # Only show spinner if stderr is a terminal
     if [ ! -t 2 ]; then
@@ -113,26 +121,28 @@ spinner() {
     fi
     
     while kill -0 $pid 2>/dev/null; do
-        printf "\r%s %c " "$message" "${chars:$i:1}" >&2
+        char=$(echo "$chars" | cut -c$((i + 1)))
+        printf "\r%s %c " "$message" "$char" >&2
         i=$(( (i+1) % 4 ))
         sleep 0.1
     done
+    # Clear line
     printf "\r%*s\r" $((${#message} + 4)) "" >&2
 }
 
 # Extract fixed file from AI output
 extract_fixed_file() {
-    local output="$1"
+    output="$1"
     
     # First try to extract from code blocks
-    local code_block=$(echo "$output" | sed -n '/^```/,/^```$/p' | sed '1d;$d')
+    code_block=$(echo "$output" | sed -n '/^```/,/^```$/p' | sed '1d;$d')
     if [ -n "$code_block" ]; then
         echo "$code_block"
         return
     fi
     
     # Try to skip common preamble patterns
-    local cleaned=$(echo "$output" | sed -n '/^def\|^class\|^import\|^from\|^#!\|^\/\*\|^\/\//,$p')
+    cleaned=$(echo "$output" | sed -n '/^def\|^class\|^import\|^from\|^#!\|^\/\*\|^\/\//,$p')
     if [ -n "$cleaned" ]; then
         echo "$cleaned"
         return
@@ -145,44 +155,25 @@ extract_fixed_file() {
 # ─── Model Listing & Selection ───────────────────────────────────────────────────
 
 fetch_openrouter_models() {
-    local num=$1
-    local sort_key=$2
+    num=$1
+    sort_key=$2
     
     log_info "Fetching OpenRouter models..."
     
-    local response=$(curl -s -m $REQUEST_TIMEOUT "$OPENROUTER_URL/models" 2>/dev/null)
+    response=$(curl -s -m $REQUEST_TIMEOUT "$OPENROUTER_URL/models" 2>/dev/null)
     if [ $? -ne 0 ]; then
         log_error "Could not fetch OpenRouter models"
         exit 1
     fi
     
-    # Parse models from response
-    local models=()
-    
-    # Sort and display models
-    if [ ${#models[@]} -eq 0 ]; then
-        log_error "No models found"
-        return 1
-    fi
-    
-    # Sort models
-    local sorted_models=()
-    if [ "$sort_key" == "price" ]; then
-        IFS=$'\n' sorted_models=($(printf '%s\n' "${models[@]}" | sort -t$'	' -k3 -g | head -n "$num"))
-    elif [ "$sort_key" == "context" ]; then
-        IFS=$'\n' sorted_models=($(printf '%s\n' "${models[@]}" | sort -t$'	' -k2 -rn | head -n "$num"))
-    else
-        IFS=$'\n' sorted_models=($(printf '%s\n' "${models[@]}" | sort -t$'	' -k3 -rg | head -n "$num"))
-    fi
-    
-    # Display models
-    printf '%s\n' "${sorted_models[@]}" | column -t -s $'	'
+    # Parse models from response - simplified for POSIX
+    echo "$response" | grep -o '"id"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*:"//' | sed 's/"$//' | head -n "$num"
 }
 
 get_free_models() {
-    local sort_key=$1
+    sort_key=$1
     
-    local response=$(curl -s -m $REQUEST_TIMEOUT "$OPENROUTER_URL/models" 2>/dev/null)
+    response=$(curl -s -m $REQUEST_TIMEOUT "$OPENROUTER_URL/models" 2>/dev/null)
     if [ $? -ne 0 ]; then
         log_error "Could not fetch OpenRouter models"
         return 1
@@ -199,37 +190,22 @@ get_free_models() {
 fetch_ollama_models() {
     log_info "Fetching Ollama models..."
     
-    local response=$(curl -s -m $REQUEST_TIMEOUT "$OLLAMA_URL/tags" 2>/dev/null)
+    response=$(curl -s -m $REQUEST_TIMEOUT "$OLLAMA_URL/tags" 2>/dev/null)
     if [ $? -ne 0 ]; then
         log_error "Cannot connect to Ollama at $OLLAMA_URL"
         return
     fi
     
     # Parse Ollama models from response
-    local models_array=$(parse_json_array "$response" "models")
-    
-    if [[ -z "$models_array" ]]; then
-        # Try alternative parsing
-        echo "$response" | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*:"//' | sed 's/"$//' | while read -r model_name; do
-            echo "$model_name"
-        done
-    else
-        # Parse each model
-        echo "$response" | grep -o '{[^}]*"name"[^}]*}' | while read -r model; do
-            local name=$(parse_json_value "$model" "name")
-            local size=$(parse_json_value "$model" "size")
-            local modified=$(parse_json_value "$model" "modified")
-            printf "%s\t%s\t%s\n" "$name" "${size:-}" "${modified:-}"
-        done | column -t
-    fi
+    echo "$response" | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*:"//' | sed 's/"$//'
 }
 
 # ─── Processing Functions ─────────────────────────────────────────────────────
 
 build_fix_prompt() {
-    local base_prompt="$1"
-    local fix_only=$2
-    local target_file="$3"
+    base_prompt="$1"
+    fix_only=$2
+    target_file="$3"
     
     if [ $fix_only -eq 0 ]; then
         echo "$base_prompt"
@@ -241,24 +217,24 @@ build_fix_prompt() {
 }
 
 process_with_openrouter() {
-    local api_key="$1"
-    local model="$2"
-    local prompt="$3"
-    local input_text="$4"
-    local fix_only=$5
-    local target_file="$6"
+    api_key="$1"
+    model="$2"
+    prompt="$3"
+    input_text="$4"
+    fix_only=$5
+    target_file="$6"
     
-    local full_prompt=$(build_fix_prompt "$prompt" $fix_only "$target_file")
+    full_prompt=$(build_fix_prompt "$prompt" $fix_only "$target_file")
     full_prompt="${full_prompt}${input_text}"
     
     log_debug "Using model: $model"
     
     # Build JSON payload
-    local escaped_prompt=$(escape_json_string "$full_prompt")
-    local payload=$(printf '{"model": "%s", "messages": [{"role": "user", "content": "%s"}], "temperature": 0.7}' \
+    escaped_prompt=$(escape_json_string "$full_prompt")
+    payload=$(printf '{"model": "%s", "messages": [{"role": "user", "content": "%s"}], "temperature": 0.7}' \
         "$model" "$escaped_prompt")
     
-    local response=$(curl -s -m $REQUEST_TIMEOUT \
+    response=$(curl -s -m $REQUEST_TIMEOUT \
         -H "Authorization: Bearer $api_key" \
         -H "Content-Type: application/json" \
         -d "$payload" \
@@ -271,8 +247,8 @@ process_with_openrouter() {
     
     # Check for error in response
     if echo "$response" | grep -q '"error"'; then
-        local error_msg=$(parse_json_value "$response" "message")
-        if [[ -z "$error_msg" ]]; then
+        error_msg=$(parse_json_value "$response" "message")
+        if [ -z "$error_msg" ]; then
             error_msg=$(echo "$response" | grep -o '"error"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*:"//' | sed 's/"$//')
         fi
         log_error "API error: ${error_msg:-Unknown error}"
@@ -280,7 +256,6 @@ process_with_openrouter() {
     fi
     
     # Extract content from choices array using awk for robust JSON parsing
-    local content=""
     content=$(echo "$response" | awk '
         BEGIN { 
             in_content = 0; 
@@ -341,37 +316,36 @@ process_with_openrouter() {
 }
 
 process_with_ollama() {
-    local model="$1"
-    local prompt="$2"
-    local input_text="$3"
-    local fix_only=$4
-    local target_file="$5"
+    model="$1"
+    prompt="$2"
+    input_text="$3"
+    fix_only=$4
+    target_file="$5"
     
-    local full_prompt=$(build_fix_prompt "$prompt" $fix_only "$target_file")
+    full_prompt=$(build_fix_prompt "$prompt" $fix_only "$target_file")
     full_prompt="${full_prompt}${input_text}"
     
     # Build JSON payload
-    local escaped_prompt=$(escape_json_string "$full_prompt")
-    local payload=$(printf '{"model": "%s", "messages": [{"role": "user", "content": "%s"}], "stream": false}' \
+    escaped_prompt=$(escape_json_string "$full_prompt")
+    payload=$(printf '{"model": "%s", "messages": [{"role": "user", "content": "%s"}], "stream": false}' \
         "$model" "$escaped_prompt")
     
     log_debug "Sending request to Ollama with payload: $payload"
     
-    local response=$(curl -s -m $REQUEST_TIMEOUT \
+    response=$(curl -s -m $REQUEST_TIMEOUT \
         -H "Content-Type: application/json" \
         -d "$payload" \
         "$OLLAMA_URL/chat" 2>/dev/null)
     
-    local curl_exit_code=$?
+    curl_exit_code=$?
     if [ $curl_exit_code -ne 0 ]; then
         log_error "Cannot connect to Ollama at $OLLAMA_URL (exit code: $curl_exit_code)"
         exit 1
     fi
     
-    log_debug "Received response from Ollama: ${response:0:200}..."
+    log_debug "Received response from Ollama: $(echo "$response" | cut -c1-200)..."
     
     # Extract content from Ollama response using awk for robust JSON parsing
-    local content=""
     content=$(echo "$response" | awk '
         BEGIN { 
             in_content = 0; 
@@ -419,8 +393,8 @@ process_with_ollama() {
         }
     ')
     
-    if [[ -n "$content" ]]; then
-        log_debug "Extracted content: ${content:0:100}..."
+    if [ -n "$content" ]; then
+        log_debug "Extracted content: $(echo "$content" | cut -c1-100)..."
     else
         log_error "Failed to extract content from Ollama response"
         log_debug "Full response: $response"
@@ -436,7 +410,7 @@ process_with_ollama() {
 # ─── TODO File Analysis ────────────────────────────────────────────────────────
 
 analyze_codebase_for_todos() {
-    local text="$1"
+    text="$1"
     echo "$text" | awk '
         /^# File: / {
             file = substr($0, 9)
@@ -513,18 +487,18 @@ EOF
 # ─── Main ──────────────────────────────────────────────────────────────────────
 
 main() {
-    local input_text=""
-    local ollama_model=""
-    local target_file=""
-    local list_models=0
-    local list_ollama=0
-    local list_todos=0
-    local help_examples=0
-    local show_version=0
-    local text_args=()
+    input_text=""
+    ollama_model=""
+    target_file=""
+    list_models=0
+    list_ollama=0
+    list_todos=0
+    help_examples=0
+    show_version=0
+    text_args=""
     
     # Parse arguments
-    while [[ $# -gt 0 ]]; do
+    while [ $# -gt 0 ]; do
         case $1 in
             --version)
                 show_version=1
@@ -593,7 +567,10 @@ main() {
                 ;;
             --)
                 shift
-                text_args+=("$@")
+                while [ $# -gt 0 ]; do
+                    text_args="$text_args $1"
+                    shift
+                done
                 break
                 ;;
             -*)
@@ -602,7 +579,7 @@ main() {
                 exit 1
                 ;;
             *)
-                text_args+=("$1")
+                text_args="$text_args $1"
                 shift
                 ;;
         esac
@@ -635,8 +612,8 @@ main() {
     fi
     
     # Get input text
-    if [ ${#text_args[@]} -gt 0 ]; then
-        input_text="${text_args[*]}"
+    if [ -n "$text_args" ]; then
+        input_text="$text_args"
     elif [ ! -t 0 ]; then
         input_text=$(cat)
     else
@@ -646,7 +623,7 @@ main() {
     
     # List TODO files if requested
     if [ $list_todos -eq 1 ]; then
-        local todo_files=$(analyze_codebase_for_todos "$input_text")
+        todo_files=$(analyze_codebase_for_todos "$input_text")
         if [ -z "$todo_files" ]; then
             echo "No files with TODOs found"
         else
@@ -656,17 +633,16 @@ main() {
     fi
     
     # Free model selection
-    local fallback_models=()
+    fallback_models=""
     if [ $FREE -eq 1 ] && [ -z "$ollama_model" ]; then
-        # Get free models in background
-        {
-            get_free_models "$SORT_BY" > /tmp/aifixer_free_models_$$
-        } &
-        local pid=$!
+        # Get free models
+        tmpfile="/tmp/aifixer_free_models_$$"
+        get_free_models "$SORT_BY" > "$tmpfile" &
+        pid=$!
         spinner "Selecting free/cheap models..." $pid
         wait $pid
-        local free_models=$(cat /tmp/aifixer_free_models_$$ 2>/dev/null)
-        rm -f /tmp/aifixer_free_models_$$
+        free_models=$(cat "$tmpfile" 2>/dev/null)
+        rm -f "$tmpfile"
         
         if [ -z "$free_models" ]; then
             log_error "No free/cheap models found"
@@ -675,79 +651,93 @@ main() {
         
         # Set primary model and fallbacks
         MODEL=$(echo "$free_models" | head -n1)
-        mapfile -t fallback_models < <(echo "$free_models" | tail -n+2 | head -n$MAX_FALLBACKS)
+        fallback_models=$(echo "$free_models" | tail -n+2 | head -n$MAX_FALLBACKS)
         
         log_info "Selected model: $MODEL"
-        if [ ${#fallback_models[@]} -gt 0 ]; then
-            log_info "Fallback models: ${fallback_models[*]}"
+        if [ -n "$fallback_models" ]; then
+            log_info "Fallback models: $(echo "$fallback_models" | tr '\n' ' ')"
         fi
     fi
     
     # Check API key
-    local api_key="${OPENROUTER_API_KEY:-}"
+    api_key="${OPENROUTER_API_KEY:-}"
     if [ -z "$ollama_model" ] && [ -z "$api_key" ]; then
         log_error "OPENROUTER_API_KEY not set; export it and retry."
         exit 1
     fi
     
     # Process the request
-    local start_time=$(date +%s)
-    local current_model="$MODEL"
-    local result=""
-    local success=0
+    start_time=$(date +%s)
+    current_model="$MODEL"
+    result=""
+    success=0
     
     if [ -n "$ollama_model" ]; then
         current_model="$ollama_model"
+        tmpfile="/tmp/aifixer_result_$$"
         (
             result=$(process_with_ollama "$current_model" "$PROMPT" "$input_text" $FIX_FILE_ONLY "$target_file")
-            echo "$result" > /tmp/aifixer_result_$$
+            echo "$result" > "$tmpfile"
         ) &
         spinner "Processing via Ollama ($current_model)..." $!
-        result=$(cat /tmp/aifixer_result_$$ 2>/dev/null)
-        rm -f /tmp/aifixer_result_$$
+        result=$(cat "$tmpfile" 2>/dev/null)
+        rm -f "$tmpfile"
         success=1
     else
         # Try primary model first
+        tmpfile_result="/tmp/aifixer_result_$$"
+        tmpfile_status="/tmp/aifixer_status_$$"
         (
             result=$(process_with_openrouter "$api_key" "$current_model" "$PROMPT" "$input_text" $FIX_FILE_ONLY "$target_file" 2>&1)
-            echo "$?" > /tmp/aifixer_status_$$
-            echo "$result" > /tmp/aifixer_result_$$
+            echo "$?" > "$tmpfile_status"
+            echo "$result" > "$tmpfile_result"
         ) &
         spinner "Processing via OpenRouter ($current_model)..." $!
         
-        local status=$(cat /tmp/aifixer_status_$$ 2>/dev/null || echo "1")
-        result=$(cat /tmp/aifixer_result_$$ 2>/dev/null)
-        rm -f /tmp/aifixer_status_$$ /tmp/aifixer_result_$$
+        status=$(cat "$tmpfile_status" 2>/dev/null || echo "1")
+        result=$(cat "$tmpfile_result" 2>/dev/null)
+        rm -f "$tmpfile_status" "$tmpfile_result"
         
         if [ "$status" -eq 0 ]; then
             success=1
-        elif [ ${#fallback_models[@]} -gt 0 ]; then
+        elif [ -n "$fallback_models" ]; then
             log_warning "Error with model $current_model - Trying fallback models..."
             
             # Try fallback models
-            for model in "${fallback_models[@]}"; do
+            echo "$fallback_models" | while IFS= read -r model; do
+                [ -z "$model" ] && continue
                 current_model="$model"
                 log_info "Trying fallback model: $current_model"
                 
+                tmpfile_result="/tmp/aifixer_result_$$"
+                tmpfile_status="/tmp/aifixer_status_$$"
                 (
                     result=$(process_with_openrouter "$api_key" "$current_model" "$PROMPT" "$input_text" $FIX_FILE_ONLY "$target_file" 2>&1)
-                    echo "$?" > /tmp/aifixer_status_$$
-                    echo "$result" > /tmp/aifixer_result_$$
+                    echo "$?" > "$tmpfile_status"
+                    echo "$result" > "$tmpfile_result"
                 ) &
                 spinner "Processing via OpenRouter ($current_model)..." $!
                 
-                status=$(cat /tmp/aifixer_status_$$ 2>/dev/null || echo "1")
-                result=$(cat /tmp/aifixer_result_$$ 2>/dev/null)
-                rm -f /tmp/aifixer_status_$$ /tmp/aifixer_result_$$
+                status=$(cat "$tmpfile_status" 2>/dev/null || echo "1")
+                result=$(cat "$tmpfile_result" 2>/dev/null)
+                rm -f "$tmpfile_status" "$tmpfile_result"
                 
                 if [ "$status" -eq 0 ]; then
                     log_info "✓ Fallback model $current_model succeeded"
-                    success=1
+                    echo "$result" > "/tmp/aifixer_final_result_$$"
+                    echo "1" > "/tmp/aifixer_success_$$"
                     break
                 else
                     log_warning "Fallback model $current_model failed"
                 fi
             done
+            
+            # Check if any fallback succeeded
+            if [ -f "/tmp/aifixer_success_$$" ]; then
+                success=1
+                result=$(cat "/tmp/aifixer_final_result_$$" 2>/dev/null)
+                rm -f "/tmp/aifixer_success_$$" "/tmp/aifixer_final_result_$$"
+            fi
         fi
     fi
     
@@ -757,8 +747,8 @@ main() {
     fi
     
     # Show completion message
-    local end_time=$(date +%s)
-    local elapsed=$((end_time - start_time))
+    end_time=$(date +%s)
+    elapsed=$((end_time - start_time))
     if [ -t 2 ]; then
         log_info "Completed in ${elapsed}s with $current_model ✓"
     fi
