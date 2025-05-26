@@ -29,7 +29,7 @@ while [ $# -gt 0 ]; do
 cat <<EOF
 Usage: ./install.sh [options]
 
-  --prefix, -p DIR       Install aifixer into DIR (default: autodetect).
+  --prefix, -p DIR       Install aifixer into DIR/bin (default: autodetect).
   --skip-deps            Do not install missing dependencies; just warn.
   --api-key, -k KEY      Persist KEY as OPENROUTER_API_KEY non-interactively.
   --skip-api-key         Do not prompt to set an API key.
@@ -100,7 +100,7 @@ ensure_deps() {
 
 pick_install_dir() {
   if [ -n "$PREFIX" ]; then
-    echo "$PREFIX"
+    echo "$PREFIX/bin" # <--- MODIFIED: Always use /bin within PREFIX
     return
   fi
   system_dir="/usr/local/bin"
@@ -120,7 +120,9 @@ install_aifixer() {
   if [ -f "$script_dir/$AIFIXER_SCRIPT" ]; then
     source_path="$script_dir/$AIFIXER_SCRIPT"
   else
-    source_path="$target_dir/$AIFIXER_SCRIPT"
+    # If not local, download to a temp location first, then install
+    temp_script=$(mktemp 2>/dev/null || mktemp -t 'aifixer_download')
+    source_path="$temp_script"
     log "Fetching latest $AIFIXER_SCRIPT from GitHub…"
     curl -fsSL "$REPO_RAW_URL/$AIFIXER_SCRIPT" -o "$source_path" \
       || die "Download failed."
@@ -128,6 +130,11 @@ install_aifixer() {
 
   install -m 0755 "$source_path" "$target_dir/$INSTALL_NAME"
   log "Installed $INSTALL_NAME → $target_dir/$INSTALL_NAME"
+
+  # Clean up temp file if we downloaded
+  if [ -n "$temp_script" ] && [ -f "$temp_script" ]; then
+      rm "$temp_script"
+  fi
 }
 
 ensure_path() {
@@ -150,7 +157,7 @@ persist_api_key() {
     zsh)  conf_file="$HOME/.zshrc" ;;
     fish) conf_file="$HOME/.config/fish/config.fish" ;;
     *)    # bash/sh (Linux: .bashrc/.profile, macOS: prefer .bash_profile if present)
-          if [ "$OSTYPE" = "darwin"* ] && [ -f "$HOME/.bash_profile" ]; then
+          if [ "$(uname)" = "Darwin" ] && [ -f "$HOME/.bash_profile" ]; then
             conf_file="$HOME/.bash_profile"
           elif [ -f "$HOME/.bashrc" ]; then
             conf_file="$HOME/.bashrc"
@@ -168,7 +175,7 @@ persist_api_key() {
 
   # Append only if not already present
   if ! grep -qxF "$line" "$conf_file" 2>/dev/null; then
-    echo "$line" >> "$conf_file"
+    printf '\n%s\n' "$line" >> "$conf_file"
   fi
   log "API key persisted to $conf_file"
 }
