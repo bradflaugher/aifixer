@@ -174,6 +174,66 @@ else
   print_result "FAIL" "--free flag failed"
 fi
 
+# ─── Test 7: Ollama Integration ─────────────────────────────────────────────────
+print_header "Test 7: Ollama Integration"
+
+# Check if Ollama is installed and running
+if command_exists curl && curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
+  echo "✔ Ollama is running"
+  
+  # Get list of available models
+  ollama_models=$(bash "$AIFIXER_CMD" --list-ollama-models 2>/dev/null | grep -v "INFO:" | awk '{print $1}')
+  
+  if [[ -n "$ollama_models" ]]; then
+    # Pick the first available model
+    first_model=$(echo "$ollama_models" | head -n1)
+    echo "✔ Found Ollama models. Using: $first_model"
+    
+    # Test 7a: List Ollama models
+    if list_output=$(bash "$AIFIXER_CMD" --list-ollama-models 2>&1); then
+      if grep -q "INFO: Fetching Ollama models" <<<"$list_output"; then
+        print_result "PASS" "--list-ollama-models works"
+      else
+        print_result "FAIL" "--list-ollama-models" "No fetch message found"
+      fi
+    else
+      print_result "FAIL" "--list-ollama-models failed"
+    fi
+    
+    # Test 7b: Use Ollama model for TODO fixing
+    readonly TEST_CODE_7=$'# File: ollama_test.py\n# TODO: implement hello function\ndef hello():\n    pass\n'
+    f7=$(create_temp_file "$TEST_CODE_7")
+    
+    if ollama_out=$(bash "$AIFIXER_CMD" --ollama-model "$first_model" < "$f7" 2>&1); then
+      # Check if processing message appeared
+      if grep -q "Processing via Ollama" <<<"$ollama_out"; then
+        print_result "PASS" "Ollama processing message shown"
+        
+        # Check if we got some output (even if malformed)
+        if ai_result=$(bash "$AIFIXER_CMD" --ollama-model "$first_model" < "$f7" 2>/dev/null); then
+          if [[ -n "$ai_result" ]]; then
+            print_result "PASS" "Ollama model generated output"
+          else
+            print_result "FAIL" "Ollama output" "Empty response"
+          fi
+        else
+          print_result "FAIL" "Ollama execution" "Non-zero exit code"
+        fi
+      else
+        print_result "FAIL" "Ollama processing" "No processing message"
+      fi
+    else
+      print_result "FAIL" "Ollama model execution failed"
+    fi
+  else
+    echo "Warning: No Ollama models found. Skipping model tests."
+    print_result "PASS" "Ollama check (no models to test)"
+  fi
+else
+  echo "Warning: Ollama not running or curl not available. Skipping Ollama tests."
+  print_result "PASS" "Ollama integration (skipped - not installed)"
+fi
+
 # ─── Summary ──────────────────────────────────────────────────────────────────
 print_header "Test Summary"
 echo "Total tests run: $TEST_COUNT"
