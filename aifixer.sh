@@ -293,18 +293,54 @@ process_with_openrouter() {
         return 1
     fi
     
-    # Extract content from choices array
+    # Extract content from choices array using awk for robust JSON parsing
     local content=""
-    # Try to extract content from the first choice
-    local choices_section=$(echo "$response" | grep -o '"choices"[[:space:]]*:[[:space:]]*\[[^]]*\]' | sed 's/^[^\[]*\[//')
-    if [[ -n "$choices_section" ]]; then
-        # Extract first message content
-        local first_choice=$(echo "$choices_section" | sed 's/},.*$/}/')
-        local message_section=$(echo "$first_choice" | grep -o '"message"[[:space:]]*:[[:space:]]*{[^}]*}')
-        content=$(echo "$message_section" | grep -o '"content"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*:"//' | sed 's/"$//')
-        # Unescape JSON string
-        content=$(echo "$content" | sed 's/\\n/\n/g' | sed 's/\\t/\t/g' | sed 's/\\"/"/g' | sed 's/\\\\/\\/g')
-    fi
+    content=$(echo "$response" | awk '
+        BEGIN { 
+            in_content = 0; 
+            content = "";
+            escape_mode = 0;
+        }
+        {
+            line = $0;
+            if (in_content == 0 && match(line, /"content"[[:space:]]*:[[:space:]]*"/)) {
+                # Found content field, start extracting after the opening quote
+                in_content = 1;
+                start = RSTART + RLENGTH;
+                line = substr(line, start);
+            }
+            
+            if (in_content == 1) {
+                # Process character by character to handle escapes properly
+                for (i = 1; i <= length(line); i++) {
+                    c = substr(line, i, 1);
+                    
+                    if (escape_mode == 1) {
+                        # Handle escaped characters
+                        if (c == "n") content = content "\n";
+                        else if (c == "t") content = content "\t";
+                        else if (c == "\"") content = content "\"";
+                        else if (c == "\\") content = content "\\";
+                        else if (c == "r") content = content "\r";
+                        else content = content c;
+                        escape_mode = 0;
+                    } else if (c == "\\") {
+                        escape_mode = 1;
+                    } else if (c == "\"") {
+                        # Found closing quote
+                        in_content = 2;
+                        exit;
+                    } else {
+                        content = content c;
+                    }
+                }
+                if (in_content == 1) content = content "\n";
+            }
+        }
+        END { 
+            print content; 
+        }
+    ')
     
     if [ -z "$content" ]; then
         log_error "Empty response from API"
@@ -348,17 +384,56 @@ process_with_ollama() {
     
     log_debug "Received response from Ollama: ${response:0:200}..."
     
-    # Extract content from Ollama response
+    # Extract content from Ollama response using awk for robust JSON parsing
     local content=""
-    # Extract the content field from the JSON response
-    # First, get everything after "content":"
-    local temp=$(echo "$response" | sed 's/.*"content":"//')
-    # Then get everything before the closing quote and brace
-    content=$(echo "$temp" | sed 's/"},"done_reason".*//' | sed 's/"},"done":.*//' | sed 's/"}$//')
+    content=$(echo "$response" | awk '
+        BEGIN { 
+            in_content = 0; 
+            content = "";
+            escape_mode = 0;
+        }
+        {
+            line = $0;
+            if (in_content == 0 && match(line, /"content"[[:space:]]*:[[:space:]]*"/)) {
+                # Found content field, start extracting after the opening quote
+                in_content = 1;
+                start = RSTART + RLENGTH;
+                line = substr(line, start);
+            }
+            
+            if (in_content == 1) {
+                # Process character by character to handle escapes properly
+                for (i = 1; i <= length(line); i++) {
+                    c = substr(line, i, 1);
+                    
+                    if (escape_mode == 1) {
+                        # Handle escaped characters
+                        if (c == "n") content = content "\n";
+                        else if (c == "t") content = content "\t";
+                        else if (c == "\"") content = content "\"";
+                        else if (c == "\\") content = content "\\";
+                        else if (c == "r") content = content "\r";
+                        else content = content c;
+                        escape_mode = 0;
+                    } else if (c == "\\") {
+                        escape_mode = 1;
+                    } else if (c == "\"") {
+                        # Found closing quote
+                        in_content = 2;
+                        exit;
+                    } else {
+                        content = content c;
+                    }
+                }
+                if (in_content == 1) content = content "\n";
+            }
+        }
+        END { 
+            print content; 
+        }
+    ')
     
     if [[ -n "$content" ]]; then
-        # Unescape JSON string
-        content=$(echo "$content" | sed 's/\\n/\n/g' | sed 's/\\t/\t/g' | sed 's/\\"/"/g' | sed 's/\\\\/\\/g')
         log_debug "Extracted content: ${content:0:100}..."
     else
         log_error "Failed to extract content from Ollama response"

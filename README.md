@@ -137,23 +137,27 @@ AIFixer is written in bash and requires minimal dependencies:
 
 - **bash** (v4.0+) - Usually pre-installed on Linux/Mac
 - **curl** - For API requests
+- **awk** - For JSON parsing (usually pre-installed, part of POSIX standard)
+- **grep** and **sed** - Text processing utilities (usually pre-installed)
 
 ```bash
 # Debian/Ubuntu
-sudo apt install curl
+sudo apt install curl gawk
 
 # Fedora/RHEL/CentOS
-sudo dnf install curl
+sudo dnf install curl gawk
 
 # Arch Linux
-sudo pacman -S curl
+sudo pacman -S curl gawk
 
 # Mac (with Homebrew)
-brew install curl
+brew install curl gawk
 
 # OpenSUSE
-sudo zypper install curl
+sudo zypper install curl gawk
 ```
+
+**Note:** Most Unix-like systems have these tools pre-installed. The `gawk` package ensures you have a fully-featured version of awk that supports the string manipulation functions used by AIFixer.
 
 ### Install AIFixer
 
