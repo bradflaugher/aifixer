@@ -78,6 +78,11 @@ jobs:
       env:
         OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY || 'test-key-12345' }}
       run: |
+        # Set default API key if not provided
+        if [ -z "$OPENROUTER_API_KEY" ]; then
+          export OPENROUTER_API_KEY="test-key-12345"
+        fi
+        
         # Run installer with custom prefix
         sh ./install.sh --prefix "$TEST_PREFIX" --api-key "$OPENROUTER_API_KEY" --skip-api-key
         
@@ -126,6 +131,11 @@ jobs:
       env:
         OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY || 'test-key-12345' }}
       run: |
+        # Set default API key if not provided
+        if [ -z "$OPENROUTER_API_KEY" ]; then
+          export OPENROUTER_API_KEY="test-key-12345"
+        fi
+        
         # Install to system location
         sudo sh ./install.sh --prefix /usr/local --api-key "$OPENROUTER_API_KEY" --skip-api-key
         
@@ -177,6 +187,11 @@ jobs:
       env:
         OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY || 'test-key-12345' }}
       run: |
+        # Set default API key if not provided
+        if [ -z "$OPENROUTER_API_KEY" ]; then
+          export OPENROUTER_API_KEY="test-key-12345"
+        fi
+        
         # Make test script executable
         chmod +x ./test_aifixer.sh
         
@@ -187,7 +202,7 @@ jobs:
         }
     
     - name: Test with mock API (if no key)
-      if: ${{ ! secrets.OPENROUTER_API_KEY }}
+      if: ${{ !secrets.OPENROUTER_API_KEY }}
       run: |
         echo "Note: Running with mock API key - some tests may be skipped"
         
@@ -198,7 +213,7 @@ jobs:
   test-ollama:
     name: Ollama Integration Tests
     runs-on: ubuntu-latest
-    if: github.event.inputs.test_ollama == 'true' || contains(github.event_name, 'workflow_dispatch')
+    if: github.event.inputs.test_ollama == 'true'
     
     steps:
     - name: Checkout repository
