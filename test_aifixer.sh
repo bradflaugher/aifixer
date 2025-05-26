@@ -234,6 +234,80 @@ else
   print_result "PASS" "Ollama integration (skipped - not installed)"
 fi
 
+# ─── Test 8: Piping and --fix-file-only ─────────────────────────────────────────
+print_header "Test 8: Piping and --fix-file-only"
+
+# Test 8a: Regular piping (with explanations)
+readonly TEST_CODE_8=$'def add(a, b):\n    # TODO: Add type checking\n    return a + b\n'
+f8=$(create_temp_file "$TEST_CODE_8")
+
+if regular_out=$(bash "$AIFIXER_CMD" < "$f8" 2>/dev/null); then
+  # Check if output contains both code and explanation
+  if grep -q "def add" <<<"$regular_out" && [[ ${#regular_out} -gt 100 ]]; then
+    print_result "PASS" "Regular output includes full response"
+  else
+    print_result "FAIL" "Regular output format" "Output too short or missing code"
+  fi
+else
+  print_result "FAIL" "Regular piping failed"
+fi
+
+# Test 8b: --fix-file-only flag
+if fixed_out=$(bash "$AIFIXER_CMD" --fix-file-only < "$f8" 2>/dev/null); then
+  # Count lines - should be just code without explanations
+  line_count=$(echo "$fixed_out" | wc -l)
+  # Check if it's cleaner output (no markdown, shorter)
+  if ! grep -q '```' <<<"$fixed_out" && [[ $line_count -lt 20 ]]; then
+    print_result "PASS" "--fix-file-only returns clean code"
+  else
+    print_result "FAIL" "--fix-file-only format" "Output contains markdown or is too long"
+  fi
+else
+  print_result "FAIL" "--fix-file-only execution failed"
+fi
+
+# Test 8c: Piping to file
+output_file="/tmp/aifixer_test_output_$$.py"
+if bash "$AIFIXER_CMD" --fix-file-only < "$f8" > "$output_file" 2>/dev/null; then
+  if [[ -f "$output_file" ]] && grep -q "def add" "$output_file"; then
+    print_result "PASS" "Piping to file works correctly"
+    rm -f "$output_file"
+  else
+    print_result "FAIL" "Piping to file" "Output file missing or incomplete"
+  fi
+else
+  print_result "FAIL" "Piping to file execution failed"
+fi
+
+# ─── Test 9: Ollama with --fix-file-only ─────────────────────────────────────────
+if command_exists curl && curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
+  print_header "Test 9: Ollama with --fix-file-only"
+  
+  # Get first available Ollama model
+  first_model=$(bash "$AIFIXER_CMD" --list-ollama-models 2>/dev/null | grep -v "INFO:" | awk '{print $1}' | head -n1)
+  
+  if [[ -n "$first_model" ]]; then
+    readonly TEST_CODE_9=$'def greet(name):\n    # TODO: Add input validation\n    print(f"Hello {name}")\n'
+    f9=$(create_temp_file "$TEST_CODE_9")
+    
+    # Test Ollama with --fix-file-only
+    if ollama_fixed=$(bash "$AIFIXER_CMD" --ollama-model "$first_model" --fix-file-only < "$f9" 2>/dev/null); then
+      # Check for clean code output
+      if grep -q "def greet" <<<"$ollama_fixed" && ! grep -q '```' <<<"$ollama_fixed"; then
+        print_result "PASS" "Ollama --fix-file-only returns clean code"
+      else
+        print_result "FAIL" "Ollama --fix-file-only format" "Contains markdown or missing function"
+      fi
+    else
+      print_result "FAIL" "Ollama --fix-file-only execution failed"
+    fi
+  else
+    print_result "PASS" "Ollama --fix-file-only (skipped - no models)"
+  fi
+else
+  print_result "PASS" "Ollama --fix-file-only (skipped - Ollama not running)"
+fi
+
 # ─── Summary ──────────────────────────────────────────────────────────────────
 print_header "Test Summary"
 echo "Total tests run: $TEST_COUNT"

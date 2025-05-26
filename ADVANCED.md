@@ -13,6 +13,40 @@ This guide contains practical examples and techniques for getting the most out o
 
 ## Advanced Usage Examples
 
+### Output Modes and Piping
+
+AIFixer supports two output modes to suit different workflows:
+
+**Default Mode (with explanations):**
+```bash
+# Get the full AI response including code and explanations
+cat code.py | aifixer
+# Output includes: fixed code + explanation of changes + reasoning
+```
+
+**Fix-File-Only Mode (clean code):**
+```bash
+# Get only the fixed code without any explanations
+cat code.py | aifixer --fix-file-only
+# Output: Just the fixed code, perfect for piping to files
+```
+
+**When to use each mode:**
+```bash
+# Use default mode when you want to understand the changes:
+cat complex_algorithm.py | aifixer | less
+
+# Use --fix-file-only when piping to files or automated workflows:
+cat buggy.py | aifixer --fix-file-only > fixed.py
+
+# In CI/CD pipelines:
+cat src/main.js | aifixer --fix-file-only > src/main.js.fixed
+mv src/main.js.fixed src/main.js
+
+# For batch processing:
+find . -name "*.py" -exec sh -c 'cat {} | aifixer --fix-file-only > {}.tmp && mv {}.tmp {}' \;
+```
+
 ### Fix TODOs by Language
 
 **Python:**
@@ -50,14 +84,14 @@ diff -u -c3 original_file.py <(cat original_file.py | aifixer)
 
 ```bash
 # Using sponge from moreutils
-cat file.py | aifixer | sponge file.py
+cat file.py | aifixer --fix-file-only | sponge file.py
 
 # Using a temporary file
-cat file.js | aifixer > file.js.tmp && mv file.js.tmp file.js
+cat file.js | aifixer --fix-file-only > file.js.tmp && mv file.js.tmp file.js
 
 # Edit multiple files at once
 for file in $(grep -l "TODO" *.py); do
-  cat $file | aifixer | sponge $file
+  cat $file | aifixer --fix-file-only | sponge $file
 done
 ```
 
@@ -340,6 +374,18 @@ Solutions:
 1. Check if Ollama is running: ps aux | grep ollama
 2. Start Ollama if needed: ollama serve
 3. Verify models are installed: ollama list
+```
+
+**Ollama Output Formatting:**
+```
+If Ollama output appears garbled or on separate lines:
+
+This is fixed in AIFixer v1.3.0+. The tool now properly handles Ollama's
+streaming responses and formats the output correctly.
+
+Example usage with Ollama:
+cat code.py | aifixer --ollama-model gemma3:1b
+cat code.py | aifixer --ollama-model gemma3:1b --fix-file-only
 ```
 
 **Python Requests Module Missing:**

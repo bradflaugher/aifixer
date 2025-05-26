@@ -6,7 +6,7 @@ set -euo pipefail
 VERSION="1.3.0"
 OPENROUTER_URL="https://openrouter.ai/api/v1"
 OLLAMA_URL="http://localhost:11434/api"
-REQUEST_TIMEOUT=10
+REQUEST_TIMEOUT=60
 
 # Default values
 MODEL="anthropic/claude-3-sonnet-20240229"
@@ -131,8 +131,15 @@ extract_fixed_file() {
         return
     fi
     
-    # Otherwise, clean up the output
-    echo "$output" | sed -E 's/^#+ .*$//' | sed '/^[[:space:]]*$/d'
+    # Try to skip common preamble patterns
+    local cleaned=$(echo "$output" | sed -n '/^def\|^class\|^import\|^from\|^#!\|^\/\*\|^\/\//,$p')
+    if [ -n "$cleaned" ]; then
+        echo "$cleaned"
+        return
+    fi
+    
+    # Otherwise, return original output
+    echo "$output"
 }
 
 # ─── Model Listing & Selection ───────────────────────────────────────────────────
@@ -323,26 +330,39 @@ process_with_ollama() {
     
     # Build JSON payload
     local escaped_prompt=$(escape_json_string "$full_prompt")
-    local payload=$(printf '{"model": "%s", "messages": [{"role": "user", "content": "%s"}]}' \
+    local payload=$(printf '{"model": "%s", "messages": [{"role": "user", "content": "%s"}], "stream": false}' \
         "$model" "$escaped_prompt")
+    
+    log_debug "Sending request to Ollama with payload: $payload"
     
     local response=$(curl -s -m $REQUEST_TIMEOUT \
         -H "Content-Type: application/json" \
         -d "$payload" \
         "$OLLAMA_URL/chat" 2>/dev/null)
     
-    if [ $? -ne 0 ]; then
-        log_error "Cannot connect to Ollama at $OLLAMA_URL"
+    local curl_exit_code=$?
+    if [ $curl_exit_code -ne 0 ]; then
+        log_error "Cannot connect to Ollama at $OLLAMA_URL (exit code: $curl_exit_code)"
         exit 1
     fi
     
+    log_debug "Received response from Ollama: ${response:0:200}..."
+    
     # Extract content from Ollama response
     local content=""
-    local message_section=$(echo "$response" | grep -o '"message"[[:space:]]*:[[:space:]]*{[^}]*}')
-    if [[ -n "$message_section" ]]; then
-        content=$(echo "$message_section" | grep -o '"content"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*:"//' | sed 's/"$//')
+    # Extract the content field from the JSON response
+    # First, get everything after "content":"
+    local temp=$(echo "$response" | sed 's/.*"content":"//')
+    # Then get everything before the closing quote and brace
+    content=$(echo "$temp" | sed 's/"},"done_reason".*//' | sed 's/"},"done":.*//' | sed 's/"}$//')
+    
+    if [[ -n "$content" ]]; then
         # Unescape JSON string
         content=$(echo "$content" | sed 's/\\n/\n/g' | sed 's/\\t/\t/g' | sed 's/\\"/"/g' | sed 's/\\\\/\\/g')
+        log_debug "Extracted content: ${content:0:100}..."
+    else
+        log_error "Failed to extract content from Ollama response"
+        log_debug "Full response: $response"
     fi
     
     if [ $fix_only -eq 1 ]; then
@@ -683,7 +703,11 @@ main() {
     fi
     
     # Output result
-    echo "$result"
+    if [ $FIX_FILE_ONLY -eq 1 ]; then
+        extract_fixed_file "$result"
+    else
+        echo "$result"
+    fi
 }
 
 # Run main function

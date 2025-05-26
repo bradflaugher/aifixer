@@ -122,6 +122,9 @@ diff -u <(cat buggy_code.c) <(cat buggy_code.c | aifixer) | delta
 # Fix all TODOs and immediately commit (dangerous but awesome)
 cat feature.py | aifixer > feature.py && git commit -am "Implement feature with AIFixer"
 
+# Get just the fixed code without explanations (perfect for piping)
+cat buggy_code.py | aifixer --fix-file-only > fixed_code.py
+
 # Process specific code patterns with custom prompts
 cat api.js | aifixer --prompt "Add input validation to all API endpoints: " > secure_api.js
 ```
@@ -261,6 +264,23 @@ aifixer --list-models --num-models 10 --sort-by price
 ```
 
 ## 🧙‍♂️ Advanced Usage
+
+### Output Modes
+
+```bash
+# Default: Full AI response with explanations
+cat code.py | aifixer
+# Output: Fixed code + explanations of changes
+
+# Clean code only (ideal for piping to files)
+cat code.py | aifixer --fix-file-only > fixed.py
+# Output: Just the fixed code, no explanations
+
+# When to use --fix-file-only:
+# - Piping directly to source files
+# - Automated workflows and CI/CD pipelines
+# - When you only need the code, not the reasoning
+```
 
 ### Custom Prompts for Specific Tasks
 
