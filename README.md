@@ -46,15 +46,13 @@ AIFixer is a command-line tool that uses AI to automatically fix, improve, and c
 
 ## 📥 Installation
 
-Works on any Unix system (Linux, macOS, BSD) or Windows with WSL.
+Works on any Unix-like system (Linux, macOS, BSD) or Windows with WSL.
 
-<details>
-<summary><strong>Quick Install</strong></summary>
+### Quick Install
+
 ```sh
 curl -sL https://raw.githubusercontent.com/bradflaugher/aifixer/main/install.sh | sh
 ```
-
-</details>
 
 <details>
 <summary><strong>Manual Install</strong></summary>
