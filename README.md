@@ -201,12 +201,12 @@ This simple design makes it easy to integrate into existing workflows, CI/CD pip
 | Feature | AIFixer | Claude Code | Aider | Cursor |
 |---------|---------|-------------|-------|----------------|
 | **🖥️ Interface** | 🚀 CLI (pipe-based) | 🤖 CLI (interactive) | 🤖 CLI (interactive) | 🔌 IDE |
-| **📦 Dependencies** | ✨ None (shell script) ✅ | 📦 Node.js | 🐍 Python | 💻 IDE |
-| **🌐 Offline Support** | 🏠 Yes (via Ollama) ✅ | ☁️ No ❌ | ☁️ No ❌ | ☁️ No ❌ |
+| **📦 Dependencies** | ✨ None (shell script) | 📦 Node.js | 🐍 Python | 💻 IDE |
+| **🌐 Offline Support** | 🏠 Yes (via Ollama) | ☁️ No ❌ | 🏠 Yes  | ☁️ No ❌|
 | **💰 Price Model** | 💳 Pay-per-use (via OpenRouter) | 💳 Pay-per-use or 🔄 Subscription | 💳 Pay-per-use | 🔄 Subscription |
-| **💾 System Requirements** | 🥔 Runs on a potato ✅ | 🖥️ Modern system | 🖥️ Modern system | 🖥️ Modern System |
-| **🎯 Model Selection** | 🔥 Choose any model per task ✅ | 🔒 Limited to Claude models | 🔒 Pre-configured models | 🔒 Pre-configured models |
-| **🧠 Model Flexibility** | 💪 Use the newest frontier models | 🤖 Claude Models Only | 💪 Use the newest frontier models | 🤖 Limited provider support |
+| **💾 System Requirements** | 🥔 Runs on a potato | 🖥️ Modern system | 🖥️ Modern system | 🖥️ Modern System |
+| **🎯 Model Selection** | 🔥 Choose any model per task | 🔒 Limited to Claude models | 🔒 Pre-configured models | 🔒 Pre-configured models |
+| **🧠 Model Flexibility** | 💪 Use the latest frontier models  | 🤖 Claude Models Only | 💪 Use the latest frontier models | 🤖 Limited provider support |
 
 ### Why Model Choice Matters
 
