@@ -64,8 +64,6 @@ aifixer --prompt "write me an interactive bash script to harden my ubuntu instal
 cat broken_code.py | aifixer > fixed_code.py
 ```
 
-> **📝 Note about Default Behavior**
-> 
 > The default prompt for AIFixer is designed to fix TODOs and improve code quality. For best results when using the default prompt, ensure your input file contains TODO comments that describe what needs to be implemented or fixed.
 > 
 > **Example workflow:**
@@ -210,7 +208,7 @@ This simple design makes it easy to integrate into existing workflows, CI/CD pip
 
 ### Why Model Choice Matters
 
-> NOTE: See a full list of supported models at [openrouter.ai/models](https://openrouter.ai/models?order=top-weekly)
+> See a full list of supported models at [openrouter.ai/models](https://openrouter.ai/models?order=top-weekly)
 
 With AIFixer, you can choose the right model for each task:
 - **🚀 Complex refactoring?** → Use the latest frontier models as soon as they're released
