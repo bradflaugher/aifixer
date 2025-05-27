@@ -18,10 +18,17 @@
 
 ---
 
-## 🚀 Quick Install
+## 📚 Basic Examples
 
 ```sh
-curl -sL https://raw.githubusercontent.com/bradflaugher/aifixer/main/install.sh | sh
+# Fix a file
+cat broken_code.py | aifixer > fixed_code.py
+
+# Preview changes before applying
+diff -u original.js <(cat original.js | aifixer)
+
+# Get only the fixed code (no explanations)
+cat code.py | aifixer --fix-file-only > fixed.py
 ```
 
 <details>
@@ -39,10 +46,15 @@ AIFixer is a command-line tool that uses AI to automatically fix, improve, and c
 
 ## 📥 Installation
 
-### Quick Install
+Works on any Unix system (Linux, macOS, BSD) or Windows with WSL.
+
+<details>
+<summary><strong>Quick Install</strong></summary>
 ```sh
 curl -sL https://raw.githubusercontent.com/bradflaugher/aifixer/main/install.sh | sh
 ```
+
+</details>
 
 <details>
 <summary><strong>Manual Install</strong></summary>
@@ -59,22 +71,6 @@ export OPENROUTER_API_KEY="your-key-here"
 </details>
 
 ## 💻 Usage
-
-<details>
-<summary><strong>📚 Basic Examples</strong></summary>
-
-```sh
-# Fix a file
-cat broken_code.py | aifixer > fixed_code.py
-
-# Preview changes before applying
-diff -u original.js <(cat original.js | aifixer)
-
-# Get only the fixed code (no explanations)
-cat code.py | aifixer --fix-file-only > fixed.py
-```
-
-</details>
 
 ### 🎯 Common Use Cases
 
@@ -182,8 +178,7 @@ This simple design makes it easy to integrate into existing workflows, CI/CD pip
 
 </details>
 
-<details>
-<summary><strong>📊 Comparison with Alternatives</strong></summary>
+## 📊 Comparison with Alternatives
 
 | Feature | AIFixer | Claude Code | Aider | Cursor |
 |---------|---------|-------------|-------|----------------|
@@ -192,5 +187,3 @@ This simple design makes it easy to integrate into existing workflows, CI/CD pip
 | **🌐 Offline Support** | 🏠 Yes (via Ollama) ✅ | ☁️ No ❌ | ☁️ No ❌ | ☁️ No ❌ |
 | **💰 Price Model** | 💳 Pay-per-use (via OpenRouter) | 💳 Pay-per-use | 💳 Pay-per-use | 🔄 Subscription |
 | **🥔 System Requirements** | 🪶 Runs on a potato ✅ | 🖥️ Modern system | 🖥️ Modern system | 💪 Modern System |
-
-</details>
