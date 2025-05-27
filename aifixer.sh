@@ -3,7 +3,7 @@
 
 set -eu
 
-VERSION="1.5.0"
+VERSION="1.5.1"
 OPENROUTER_URL="https://openrouter.ai/api/v1"
 OLLAMA_URL="http://localhost:11434/api"
 REQUEST_TIMEOUT=60
@@ -17,6 +17,7 @@ FIX_FILE_ONLY=0
 FREE=0
 MAX_FALLBACKS=2
 SORT_BY="price"
+MIN_VALID_RESPONSE_LENGTH=10  # Minimum characters for a valid response
 
 # Color codes for output (disabled if not in terminal)
 if [ -t 2 ]; then
@@ -149,6 +150,34 @@ extract_fixed_file() {
     
     # Otherwise, return original output
     echo "$output"
+}
+
+# Check if response is valid (not empty, not just whitespace, has minimum length)
+is_valid_response() {
+    content="$1"
+    
+    # Check if empty
+    if [ -z "$content" ]; then
+        log_debug "Response validation failed: empty content"
+        return 1
+    fi
+    
+    # Remove whitespace and check length
+    trimmed=$(echo "$content" | tr -d '[:space:]')
+    length=${#trimmed}
+    
+    if [ $length -lt $MIN_VALID_RESPONSE_LENGTH ]; then
+        log_debug "Response validation failed: too short (${length} chars, minimum ${MIN_VALID_RESPONSE_LENGTH})"
+        return 1
+    fi
+    
+    # Check if it's just error messages or common failure patterns
+    if echo "$content" | grep -qE "^(error|Error|ERROR|null|undefined|None|\{\}|\[\])$"; then
+        log_debug "Response validation failed: appears to be an error response"
+        return 1
+    fi
+    
+    return 0
 }
 
 # ─── Model Listing & Selection ───────────────────────────────────────────────────
@@ -413,8 +442,9 @@ def parse_json(data):
         }
     ')
     
-    if [ -z "$content" ]; then
-        log_error "Empty response from API"
+    # Validate response
+    if ! is_valid_response "$content"; then
+        log_error "Invalid or empty response from API"
         return 1
     fi
     
@@ -552,7 +582,7 @@ Options:
 Model Selection:
   --model MODEL           Model to use (default: $MODEL)
   --ollama-model MODEL    Use Ollama model instead
-  --free                  Auto-select free/cheap model
+  --free                  Auto-select free/cheap model with fallbacks
   --max-fallbacks N       Number of fallback models (default: $MAX_FALLBACKS)
 
 Model Listing:
@@ -578,7 +608,7 @@ Examples:
   # Fix TODOs in a file
   cat file.py | aifixer --model anthropic/claude-3-sonnet > fixed.py
   
-  # Use a free model
+  # Use a free model with automatic fallbacks
   cat code.js | aifixer --free > output.js
   
   # List available models
@@ -798,7 +828,6 @@ main() {
         success=1
     else
         # Try primary model first
-
         tmpfile_result="/tmp/aifixer_result_$$"
         tmpfile_status="/tmp/aifixer_status_$$"
         (
@@ -812,13 +841,19 @@ main() {
         result=$(cat "$tmpfile_result" 2>/dev/null)
         rm -f "$tmpfile_status" "$tmpfile_result"
         
-        if [ "$status" -eq 0 ]; then
+        # Check if primary model succeeded with valid response
+        if [ "$status" -eq 0 ] && is_valid_response "$result"; then
             success=1
         elif [ -n "$fallback_models" ]; then
-            log_warning "Error with model $current_model - Trying fallback models..."
+            # Primary model failed or returned invalid response
+            if [ "$status" -ne 0 ]; then
+                log_warning "Primary model $current_model failed - Trying fallback models..."
+            else
+                log_warning "Primary model $current_model returned invalid/empty response - Trying fallback models..."
+            fi
             
-            # Try fallback models
-            echo "$fallback_models" | while IFS= read -r model; do
+            # Try fallback models (fixed: no subshell issue)
+            while IFS= read -r model; do
                 [ -z "$model" ] && continue
                 current_model="$model"
                 log_info "Trying fallback model: $current_model"
@@ -836,31 +871,26 @@ main() {
                 result=$(cat "$tmpfile_result" 2>/dev/null)
                 rm -f "$tmpfile_status" "$tmpfile_result"
                 
-                if [ "$status" -eq 0 ]; then
+                # Check if this model succeeded with valid response
+                if [ "$status" -eq 0 ] && is_valid_response "$result"; then
                     log_info "✓ Fallback model $current_model succeeded"
-                    tmpfile_final_result="/tmp/aifixer_final_result_$$"
-                    tmpfile_success="/tmp/aifixer_success_$$"
-                    echo "$result" > "$tmpfile_final_result"
-                    echo "1" > "$tmpfile_success"
+                    success=1
                     break
                 else
-                    log_warning "Fallback model $current_model failed"
+                    if [ "$status" -ne 0 ]; then
+                        log_warning "Fallback model $current_model failed"
+                    else
+                        log_warning "Fallback model $current_model returned invalid/empty response"
+                    fi
                 fi
-            done
-            
-            # Check if any fallback succeeded
-            tmpfile_final_result="/tmp/aifixer_final_result_$$"
-            tmpfile_success="/tmp/aifixer_success_$$"
-            if [ -f "$tmpfile_success" ]; then
-                success=1
-                result=$(cat "$tmpfile_final_result" 2>/dev/null)
-                rm -f "$tmpfile_success" "$tmpfile_final_result"
-            fi
+            done <<EOF
+$fallback_models
+EOF
         fi
     fi
     
     if [ $success -eq 0 ]; then
-        log_error "All models failed"
+        log_error "All models failed or returned invalid responses"
         exit 1
     fi
     
