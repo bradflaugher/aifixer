@@ -42,11 +42,19 @@ export OPENROUTER_API_KEY="your-key-here"
 
 </details>
 
+## 🤯 Let AI explain a code to you 
+
+```sh
+# Help!
+cat messy_script.sh | aifixer "please explain to me what this does"
+```
+
+
 ## ✨ Let AI write a new file from scratch
 
 ```sh
 # Generate code
-aifixer "write me an interactive bash script to harden my ubuntu install" > hadening_script.sh
+aifixer --prompt "write me an interactive bash script to harden my ubuntu install" > hadening_script.sh
 ```
 
 ## 📚 Give aifixer an existing file to fix 
