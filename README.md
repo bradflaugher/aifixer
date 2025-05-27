@@ -170,10 +170,3 @@ This simple design makes it easy to integrate into existing workflows, CI/CD pip
 | **💰 Price Model** | 💳 Pay-per-use (via OpenRouter) | 💳 Pay-per-use | 💳 Pay-per-use | 🔄 Subscription |
 | **🥔 System Requirements** | 🪶 Runs on a potato ✅ | 🖥️ Modern system | 🖥️ Modern system | 💪 Madern System |
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit issues, feature requests, or pull requests.
-
-## License
-
-GPL-3.0 License - see [LICENSE](LICENSE) for details.
