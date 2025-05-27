@@ -140,9 +140,6 @@ aifixer --list-models
 
 # Use a specific model
 aifixer --model anthropic/claude-3-haiku-20240307 < code.py > fixed.py
-
-# Use free models when available
-aifixer --free-models-first < script.sh > improved.sh
 ```
 
 **Local AI with Ollama:**
@@ -151,36 +148,6 @@ aifixer --free-models-first < script.sh > improved.sh
 ollama pull codellama
 cat code.py | aifixer --ollama-model codellama > fixed.py
 ```
-
-**Batch Processing:**
-```sh
-# Fix all Python files with TODOs
-find . -name "*.py" -exec grep -l "TODO" {} \; | while read file; do
-  echo "Processing $file..."
-  cat "$file" | aifixer --fix-file-only > "$file.tmp" && mv "$file.tmp" "$file"
-done
-```
-
-## Configuration
-
-### Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OPENROUTER_API_KEY` | Your OpenRouter API key | Required |
-| `AIFIXER_DEFAULT_MODEL` | Default AI model to use | `anthropic/claude-3-haiku-20240307` |
-| `OLLAMA_HOST` | Ollama server URL | `http://localhost:11434` |
-
-### Command-line Options
-
-| Option | Description |
-|--------|-------------|
-| `--fix-file-only` | Output only the fixed code without explanations |
-| `--model MODEL` | Use a specific AI model |
-| `--ollama-model MODEL` | Use a local Ollama model |
-| `--prompt TEXT` | Custom instruction prefix |
-| `--free-models-first` | Prefer free models when available |
-| `--list-models` | Show available models |
 
 ## How It Works
 
@@ -200,22 +167,11 @@ This simple design makes it easy to integrate into existing workflows, CI/CD pip
 | **Interface** | CLI (pipe-based) | CLI (interactive) | CLI (interactive) | IDE integration |
 | **Dependencies** | None (shell script) | Node.js | Python | VS Code/IDE |
 | **Offline Support** | Yes (via Ollama) | No | No | No |
-| **Batch Processing** | Native | Limited | Yes | No |
 | **Price Model** | Pay-per-use | Pay-per-use | Pay-per-use | Subscription |
 
 ## Contributing
 
 Contributions are welcome! Please feel free to submit issues, feature requests, or pull requests.
-
-### Development
-
-```sh
-# Run tests
-./test.sh
-
-# Check shell compatibility
-shellcheck aifixer.sh
-```
 
 ## License
 
