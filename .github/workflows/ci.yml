@@ -27,7 +27,6 @@ jobs:
     
     - name: Install aifixer
       run: |
-        # Install with test API key
         sudo sh ./install.sh --prefix /usr/local --skip-api-key
         
         # Verify installation
