@@ -1,4 +1,4 @@
-# AIFixer
+# 🔧 AIFixer
 
 <p align="center">
   <img src="./logo.svg" alt="AIFixer" width="600">
@@ -11,31 +11,42 @@
 </p>
 
 <p align="center">
-  <strong>AI-powered code improvements directly in your terminal</strong>
+  <strong>🤖 AI-powered code improvements directly in your terminal</strong>
   <br>
   <em>Transform TODOs into working code • Fix bugs • Add error handling • Refactor with confidence</em>
 </p>
 
 ---
 
-## What is AIFixer?
+## 🚀 Quick Install
+
+```sh
+curl -sL https://raw.githubusercontent.com/bradflaugher/aifixer/main/install.sh | sh
+```
+
+<details>
+<summary><strong>📋 What is AIFixer?</strong></summary>
 
 AIFixer is a command-line tool that uses AI to automatically fix, improve, and complete your code. It's designed as a simple Unix filter: pipe in code, get improved code out.
 
-**Key features:**
-- **Portable**: POSIX-compliant shell script that runs on any Unix-like system
-- **No dependencies**: Works out of the box without package managers or runtime environments
-- **Flexible**: Supports multiple AI providers (OpenRouter, Ollama for local models)
-- **Unix philosophy**: Designed to work with pipes, scripts, and existing workflows
+**✨ Key features:**
+- **🎯 Portable**: POSIX-compliant shell script that runs on any Unix-like system
+- **📦 No dependencies**: Works out of the box without package managers or runtime environments
+- **🔌 Flexible**: Supports multiple AI providers (OpenRouter, Ollama for local models)
+- **🐧 Unix philosophy**: Designed to work with pipes, scripts, and existing workflows
 
-## Installation
+</details>
+
+## 📥 Installation
 
 ### Quick Install
 ```sh
 curl -sL https://raw.githubusercontent.com/bradflaugher/aifixer/main/install.sh | sh
 ```
 
-### Manual Install
+<details>
+<summary><strong>Manual Install</strong></summary>
+
 ```sh
 # Download the script
 wget https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.sh
@@ -45,9 +56,12 @@ chmod +x aifixer.sh
 export OPENROUTER_API_KEY="your-key-here"
 ```
 
-## Usage
+</details>
 
-### Basic Examples
+## 💻 Usage
+
+<details>
+<summary><strong>📚 Basic Examples</strong></summary>
 
 ```sh
 # Fix a file
@@ -60,10 +74,12 @@ diff -u original.js <(cat original.js | aifixer)
 cat code.py | aifixer --fix-file-only > fixed.py
 ```
 
-### Common Use Cases
+</details>
+
+### 🎯 Common Use Cases
 
 <details>
-<summary><strong>Implementing TODOs</strong></summary>
+<summary><strong>✅ Implementing TODOs</strong></summary>
 
 **Input:**
 ```python
@@ -111,7 +127,7 @@ def process_user_data(user_id):
 </details>
 
 <details>
-<summary><strong>Adding Error Handling</strong></summary>
+<summary><strong>🛡️ Adding Error Handling</strong></summary>
 
 ```sh
 # Add comprehensive error handling
@@ -120,7 +136,7 @@ cat api_client.js | aifixer --prompt "Add proper error handling and retry logic"
 </details>
 
 <details>
-<summary><strong>Refactoring Code</strong></summary>
+<summary><strong>♻️ Refactoring Code</strong></summary>
 
 ```sh
 # Refactor for better performance
@@ -131,7 +147,8 @@ cat monolithic_function.js | aifixer --prompt "Break this into smaller, testable
 ```
 </details>
 
-### Advanced Usage
+<details>
+<summary><strong>🚀 Advanced Usage</strong></summary>
 
 **Model Selection:**
 ```sh
@@ -149,18 +166,24 @@ ollama pull codellama
 cat code.py | aifixer --ollama-model codellama > fixed.py
 ```
 
-## How It Works
+</details>
+
+<details>
+<summary><strong>⚙️ How It Works</strong></summary>
 
 AIFixer follows the Unix philosophy of doing one thing well:
 
-1. **Read** code from stdin
-2. **Analyze** the code using AI to identify issues and TODOs
-3. **Generate** improved code
-4. **Output** the result to stdout
+1. **📥 Read** code from stdin
+2. **🔍 Analyze** the code using AI to identify issues and TODOs
+3. **⚡ Generate** improved code
+4. **📤 Output** the result to stdout
 
 This simple design makes it easy to integrate into existing workflows, CI/CD pipelines, and shell scripts.
 
-## Comparison with Alternatives
+</details>
+
+<details>
+<summary><strong>📊 Comparison with Alternatives</strong></summary>
 
 | Feature | AIFixer | Claude Code | Aider | Cursor |
 |---------|---------|-------------|-------|----------------|
@@ -168,5 +191,6 @@ This simple design makes it easy to integrate into existing workflows, CI/CD pip
 | **📦 Dependencies** | ✨ None (shell script) ✅ | 📦 Node.js | 🐍 Python | 💻 IDE |
 | **🌐 Offline Support** | 🏠 Yes (via Ollama) ✅ | ☁️ No ❌ | ☁️ No ❌ | ☁️ No ❌ |
 | **💰 Price Model** | 💳 Pay-per-use (via OpenRouter) | 💳 Pay-per-use | 💳 Pay-per-use | 🔄 Subscription |
-| **🥔 System Requirements** | 🪶 Runs on a potato ✅ | 🖥️ Modern system | 🖥️ Modern system | 💪 Madern System |
+| **🥔 System Requirements** | 🪶 Runs on a potato ✅ | 🖥️ Modern system | 🖥️ Modern system | 💪 Modern System |
 
+</details>
