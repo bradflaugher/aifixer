@@ -166,14 +166,27 @@ is_valid_response() {
     trimmed=$(echo "$content" | tr -d '[:space:]')
     length=${#trimmed}
     
+    # Check if it's just error messages or common failure patterns first
+    # (before length check to catch short error responses)
+    if echo "$content" | grep -qE "^[[:space:]]*(error|Error|ERROR|null|undefined|None|\{\}|\[\])[[:space:]]*$"; then
+        log_debug "Response validation failed: appears to be an error response"
+        return 1
+    fi
+    
     if [ $length -lt $MIN_VALID_RESPONSE_LENGTH ]; then
         log_debug "Response validation failed: too short (${length} chars, minimum ${MIN_VALID_RESPONSE_LENGTH})"
         return 1
     fi
     
-    # Check if it's just error messages or common failure patterns
-    if echo "$content" | grep -qE "^(error|Error|ERROR|null|undefined|None|\{\}|\[\])$"; then
-        log_debug "Response validation failed: appears to be an error response"
+    # Check for common API error patterns
+    if echo "$content" | grep -qiE "(api error|rate limit|quota exceeded|unauthorized|forbidden|internal server error)"; then
+        log_debug "Response validation failed: contains API error message"
+        return 1
+    fi
+    
+    # Check for responses that are just whitespace or newlines
+    if [ "$length" -eq 0 ]; then
+        log_debug "Response validation failed: only whitespace"
         return 1
     fi
     
@@ -444,7 +457,7 @@ def parse_json(data):
     
     # Validate response
     if ! is_valid_response "$content"; then
-        log_error "Invalid or empty response from API"
+        log_debug "Invalid or empty response from API: '$(echo "$content" | head -c 100)...'"
         return 1
     fi
     
@@ -843,13 +856,15 @@ main() {
         
         # Check if primary model succeeded with valid response
         if [ "$status" -eq 0 ] && is_valid_response "$result"; then
+            log_debug "Primary model $current_model succeeded"
             success=1
         elif [ -n "$fallback_models" ]; then
             # Primary model failed or returned invalid response
             if [ "$status" -ne 0 ]; then
-                log_warning "Primary model $current_model failed - Trying fallback models..."
+                log_warning "Primary model $current_model failed (exit code: $status) - Trying fallback models..."
             else
                 log_warning "Primary model $current_model returned invalid/empty response - Trying fallback models..."
+                log_debug "Invalid response content: '$(echo "$result" | head -c 200)...'"
             fi
             
             # Try fallback models (fixed: no subshell issue)
@@ -878,9 +893,10 @@ main() {
                     break
                 else
                     if [ "$status" -ne 0 ]; then
-                        log_warning "Fallback model $current_model failed"
+                        log_warning "Fallback model $current_model failed (exit code: $status)"
                     else
                         log_warning "Fallback model $current_model returned invalid/empty response"
+                        log_debug "Invalid fallback response: '$(echo "$result" | head -c 100)...'"
                     fi
                 fi
             done <<EOF
