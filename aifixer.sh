@@ -16,7 +16,6 @@ DEBUG=0
 FIX_FILE_ONLY=0
 FREE=0
 MAX_FALLBACKS=2
-NUM_MODELS=20
 SORT_BY="price"
 
 # Color codes for output (disabled if not in terminal)
@@ -155,8 +154,7 @@ extract_fixed_file() {
 # ─── Model Listing & Selection ───────────────────────────────────────────────────
 
 fetch_openrouter_models() {
-    num=$1
-    sort_key=$2
+    sort_key=$1
     
     log_info "Fetching OpenRouter models..."
     
@@ -166,8 +164,10 @@ fetch_openrouter_models() {
         exit 1
     fi
     
-    # Parse models from response - simplified for POSIX
-    echo "$response" | grep -o '"id"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*:"//' | sed 's/"$//' | head -n "$num"
+    # For now, just return models in API order (curated by OpenRouter)
+    # Free models typically have ":free" suffix or very low prices
+    # High-quality models like Claude and GPT-4 are usually listed early
+    echo "$response" | grep -o '{"id":"[^"]*"' | sed 's/{"id":"//' | sed 's/"$//'
 }
 
 get_free_models() {
@@ -179,12 +179,13 @@ get_free_models() {
         return 1
     fi
     
-    # Return known free models
-    echo "google/gemini-flash-1.5"
-    echo "meta-llama/llama-3-8b-instruct:free"
-    echo "microsoft/phi-3-mini-128k-instruct:free"
-    echo "huggingfaceh4/zephyr-7b-beta:free"
-    echo "nousresearch/nous-capybara-7b:free"
+    # Extract only free models (id contains ":free" or price is "0")
+    # First get all :free models
+    echo "$response" | grep -o '{"id":"[^"]*:free"' | sed 's/{"id":"//' | sed 's/"$//'
+    
+    # Also check for models with 0 price (like some Google models)
+    # This is more complex without jq, so for now we'll add known free models
+    echo "$response" | grep -o '{"id":"google/gemini-flash-1.5"' | sed 's/{"id":"//' | sed 's/"$//' || true
 }
 
 fetch_ollama_models() {
@@ -526,7 +527,6 @@ Model Selection:
 Model Listing:
   --list-models           List OpenRouter models
   --list-ollama-models    List Ollama models
-  --num-models N          Number of models to show (default: $NUM_MODELS)
   --sort-by TYPE          Sort by: price, best, context (default: $SORT_BY)
 
 Prompt & File Options:
@@ -619,10 +619,6 @@ main() {
                 list_ollama=1
                 shift
                 ;;
-            --num-models)
-                NUM_MODELS="$2"
-                shift 2
-                ;;
             --sort-by)
                 SORT_BY="$2"
                 shift 2
@@ -675,7 +671,8 @@ main() {
     fi
     
     if [ $list_models -eq 1 ]; then
-        fetch_openrouter_models $NUM_MODELS "$SORT_BY"
+        log_info "Tip: You can browse all available models at https://openrouter.ai/models"
+        fetch_openrouter_models "$SORT_BY"
         exit 0
     fi
     
