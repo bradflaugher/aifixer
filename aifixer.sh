@@ -17,7 +17,7 @@ FIX_FILE_ONLY=0
 FREE=0
 MAX_FALLBACKS=2
 SORT_BY="price"
-MIN_VALID_RESPONSE_LENGTH=20  # Minimum characters for a valid response
+MIN_VALID_RESPONSE_LENGTH=100  # Minimum characters for a valid response
 
 # Color codes for output (disabled if not in terminal)
 if [ -t 2 ]; then
@@ -179,6 +179,18 @@ is_valid_response() {
         return 1
     fi
     
+    # Check if response appears to be cut off mid-sentence or mid-word
+    # Look for responses that don't end with proper punctuation or complete words
+    last_line=$(echo "$content" | tail -n 1)
+    if echo "$last_line" | grep -qE "[a-zA-Z]$" && ! echo "$last_line" | grep -qE '\.$|!$|\?$|:$|;$|\)$|"$|'"'"'$'; then
+        # Check if it's a very short last line that might be cut off
+        last_line_length=${#last_line}
+        if [ $last_line_length -lt 50 ]; then
+            log_debug "Response validation failed: appears to be cut off mid-sentence"
+            return 1
+        fi
+    fi
+    
     if [ $length -lt $MIN_VALID_RESPONSE_LENGTH ]; then
         log_debug "Response validation failed: too short (${length} chars, minimum ${MIN_VALID_RESPONSE_LENGTH})"
         return 1
@@ -317,6 +329,31 @@ process_with_openrouter() {
             echo "Roses are red,\nViolets are blue,\nFallback worked,\nJust for you!"
             return 0
         fi
+    elif [ "$api_key" = "test-truncated" ]; then
+        log_debug "Test mode: Simulating truncated response"
+        if [ "$model" = "google/gemini-2.0-flash-exp:free" ]; then
+            # First model returns truncated response
+            echo "Here is a poem about hello world:
+
+The screen lights up with"
+            return 0
+        elif [ "$model" = "meta-llama/llama-4-scout:free" ]; then
+            # Second model also truncated
+            echo "A simple greeting echoes through the"
+            return 0
+        else
+            # Third model returns complete response
+            echo "Hello World, a phrase so bright,
+Where code begins its dancing flight.
+A simple start, yet profound and true,
+Opening doors to worlds anew.
+
+In every language, framework, tool,
+This greeting marks the coding school.
+From novice hands to expert's art,
+Hello World remains the start."
+            return 0
+        fi
     elif [ "$api_key" = "test-key-12345" ]; then
         log_debug "Test mode: Using mock response"
         
@@ -421,7 +458,8 @@ def parse_json(data):
         if [ -z "$error_msg" ]; then
             error_msg=$(echo "$response" | grep -o '"error"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*:"//' | sed 's/"$//')
         fi
-        log_error "API error: ${error_msg:-Unknown error}"
+        log_debug "API error response: $response"
+        log_warning "API error: ${error_msg:-Unknown error}"
         return 1
     fi
     
@@ -872,7 +910,7 @@ main() {
         tmpfile_result="/tmp/aifixer_result_$$"
         tmpfile_status="/tmp/aifixer_status_$$"
         (
-            result=$(process_with_openrouter "$api_key" "$current_model" "$PROMPT" "$input_text" $FIX_FILE_ONLY "$target_file" 2>&1)
+            result=$(process_with_openrouter "$api_key" "$current_model" "$PROMPT" "$input_text" $FIX_FILE_ONLY "$target_file")
             echo "$?" > "$tmpfile_status"
             echo "$result" > "$tmpfile_result"
         ) &
@@ -914,7 +952,7 @@ main() {
                 tmpfile_result="/tmp/aifixer_result_$$"
                 tmpfile_status="/tmp/aifixer_status_$$"
                 (
-                    result=$(process_with_openrouter "$api_key" "$current_model" "$PROMPT" "$input_text" $FIX_FILE_ONLY "$target_file" 2>&1)
+                    result=$(process_with_openrouter "$api_key" "$current_model" "$PROMPT" "$input_text" $FIX_FILE_ONLY "$target_file")
                     echo "$?" > "$tmpfile_status"
                     echo "$result" > "$tmpfile_result"
                 ) &
