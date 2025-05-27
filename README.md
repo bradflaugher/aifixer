@@ -205,3 +205,17 @@ This simple design makes it easy to integrate into existing workflows, CI/CD pip
 | **🌐 Offline Support** | 🏠 Yes (via Ollama) ✅ | ☁️ No ❌ | ☁️ No ❌ | ☁️ No ❌ |
 | **💰 Price Model** | 💳 Pay-per-use (via OpenRouter) | 💳 Pay-per-use | 💳 Pay-per-use | 🔄 Subscription |
 | **💾 System Requirements** | 🥔 Runs on a potato ✅ | 🖥️ Modern system | 🖥️ Modern system | 🖥️ Modern System |
+| **🎯 Model Selection** | 🔥 Choose any model per task ✅ | 🔒 Limited to Claude models | 🔒 Pre-configured models | 🔒 Pre-configured models |
+| **🧠 Model Flexibility** | 💪 Use GPT-4o, Claude Opus, Gemini Pro, etc. | 🤖 Claude Haiku/Sonnet/Opus | 🤖 GPT-4/3.5 mainly | 🤖 Limited provider support |
+
+### Why Model Choice Matters
+
+> NOTE: See a full list of supported models at [openrouter.com/models](https://openrouter.ai/models?order=top-weekly)
+
+With AIFixer, you can choose the right model for each task:
+- **🚀 Complex refactoring?** → Use Claude 4 Opus or GPT-4o for the best results
+- **⚡ Quick fixes?** → Use faster models like Mistral Nemo or a distilled Deepseek model from OpenRouter
+- **💰 Budget conscious?** → Mix and match models based on task complexity
+- **🔒 Privacy concerns?** → Use local models via Ollama
+
+Other tools often lock you into using their default model (sometimes a lighter version to save costs), but AIFixer lets you leverage the full power of frontier models when you need it most.

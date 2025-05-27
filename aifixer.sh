@@ -3,7 +3,7 @@
 
 set -eu
 
-VERSION="1.5.1"
+VERSION="2.0.0"
 OPENROUTER_URL="https://openrouter.ai/api/v1"
 OLLAMA_URL="http://localhost:11434/api"
 REQUEST_TIMEOUT=60
