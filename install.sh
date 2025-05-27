@@ -184,11 +184,24 @@ configure_api_key() {
   # If explicitly skipping and no key provided, exit early
   [ $ASK_API_KEY -eq 0 ] && [ -z "$API_KEY" ] && return
 
+  # Check if we can interact with the user
+  # If not in a terminal and /dev/tty is not available, skip interactive prompts
+  if ! [ -t 0 ] && ! [ -r /dev/tty ]; then
+    log "Non-interactive environment detected. Skipping API key configuration."
+    log "To set API key, use: export OPENROUTER_API_KEY=\"your-key-here\""
+    return
+  fi
+
   # Check if API key is already set in environment
   if [ -n "$OPENROUTER_API_KEY" ] && [ -z "$API_KEY" ]; then
     log "OPENROUTER_API_KEY is already set in your environment."
     printf "Would you like to overwrite it? (y/N): "
-    read resp
+    # Use /dev/tty for input when stdin is not a terminal (e.g., curl | sh)
+    if [ -t 0 ]; then
+      read resp
+    else
+      read resp </dev/tty
+    fi
     case "$resp" in
       [Yy]*) ;;
       *) 
@@ -202,7 +215,12 @@ configure_api_key() {
     # If we reach here from the overwrite path, skip the initial prompt
     if [ -z "$OPENROUTER_API_KEY" ]; then
       printf "Would you like to set your OpenRouter API key now? (y/N): "
-      read resp
+      # Use /dev/tty for input when stdin is not a terminal
+      if [ -t 0 ]; then
+        read resp
+      else
+        read resp </dev/tty
+      fi
       case "$resp" in
         [Yy]*) ;;
         *) return ;;
@@ -211,9 +229,17 @@ configure_api_key() {
     
     # POSIX sh doesn't support read -s, so we use stty
     printf "Enter API key (input hidden): "
+    # Save current terminal settings
+    old_tty_settings=$(stty -g 2>/dev/null || true)
     stty -echo 2>/dev/null || true
-    read API_KEY
-    stty echo 2>/dev/null || true
+    # Use /dev/tty for input when stdin is not a terminal
+    if [ -t 0 ]; then
+      read API_KEY
+    else
+      read API_KEY </dev/tty
+    fi
+    # Restore terminal settings
+    [ -n "$old_tty_settings" ] && stty "$old_tty_settings" 2>/dev/null || stty echo 2>/dev/null || true
     echo
     
     [ -z "$API_KEY" ] && { log "No key entered – skipping."; return; }
