@@ -28,17 +28,22 @@ cat <<EOF
 Usage: ./install.sh [options]
 
   --prefix, -p DIR       Install aifixer into DIR/bin (default: autodetect).
-                         On iOS/a-shell, defaults to ~/Documents/bin
   --api-key, -k KEY      Persist KEY as OPENROUTER_API_KEY non-interactively.
   --skip-api-key         Do not prompt to set an API key.
   --help                 Show this help and exit.
+  
+The script will try these locations in order:
+  /usr/local/bin      (if writable)
+  ~/.local/bin        (XDG standard)
+  ~/bin               (traditional)
+  ~/Documents/bin     (fallback for restricted systems)
   
 Examples:
   # Install to default location
   ./install.sh
   
-  # Install to custom location (useful on iOS)
-  ./install.sh --prefix ~/Documents
+  # Install to custom location
+  ./install.sh --prefix ~/my-tools
 EOF
       exit 0 ;;
     *) die "Unknown flag: $1" ;;
@@ -80,34 +85,28 @@ pick_install_dir() {
     return
   fi
   
-  # Check if we're in a-shell on iOS
-  if [ -n "$ASHELL" ] || [ -f "$HOME/.shortcuts/README" ]; then
-    # a-shell detected - use ~/Documents/bin which is writable
-    echo "$HOME/Documents/bin"
-    return
-  fi
-  
-  # Try standard locations on other systems
-  system_dir="/usr/local/bin"
-  if [ -w "$system_dir" ]; then
-    echo "$system_dir"
-  else
-    # First try to create ~/.local/bin to test if it's allowed
-    if mkdir -p "$HOME/.local/bin" 2>/dev/null; then
-      echo "$HOME/.local/bin"
-    else
-      # Fallback to ~/bin if ~/.local/bin fails
-      echo "$HOME/bin"
+  # Try directories in order of preference, testing if we can actually create them
+  for dir in "/usr/local/bin" "$HOME/.local/bin" "$HOME/bin" "$HOME/Documents/bin"; do
+    if [ -d "$dir" ] && [ -w "$dir" ]; then
+      # Directory exists and is writable
+      echo "$dir"
+      return
+    elif [ ! -e "$dir" ]; then
+      # Directory doesn't exist, try to create it
+      if mkdir -p "$dir" 2>/dev/null; then
+        echo "$dir"
+        return
+      fi
     fi
-  fi
+  done
+  
+  # If nothing worked, suggest using --prefix
+  die "Cannot find a writable directory for installation. Please use --prefix to specify one."
 }
 
 install_aifixer() {
   target_dir=$1
-  if ! mkdir -p "$target_dir" 2>/dev/null; then
-    die "Cannot create directory $target_dir - permission denied. Try using --prefix to specify a writable location."
-  fi
-
+  
   source_path=""
   script_dir=$(dirname "$0")
   if [ -f "$script_dir/$AIFIXER_SCRIPT" ]; then
@@ -123,9 +122,9 @@ install_aifixer() {
   fi
 
   # Use cp and chmod for maximum portability (install command may not exist)
-  if ! cp "$source_path" "$target_dir/$INSTALL_NAME" 2>/dev/null; then
-    die "Cannot copy to $target_dir/$INSTALL_NAME - permission denied"
-  fi
+  cp "$source_path" "$target_dir/$INSTALL_NAME" 2>/dev/null || \
+    die "Cannot copy to $target_dir/$INSTALL_NAME - check permissions or use --prefix"
+  
   chmod 755 "$target_dir/$INSTALL_NAME" 2>/dev/null || true
   log "Installed $INSTALL_NAME → $target_dir/$INSTALL_NAME"
 
@@ -145,39 +144,54 @@ ensure_path() {
   PATH="$dir:$PATH"
   export PATH
   
-  # Special handling for a-shell
-  if [ -n "$ASHELL" ] || [ -f "$HOME/.shortcuts/README" ]; then
-    printf '\n# For a-shell, add this to your .profile or .bashrc:\nexport PATH="%s:$PATH"\n' "$dir"
-    printf '# Or create a shortcut in a-shell with: jump aifixer\n'
-  else
-    printf '\n# Add to your shell profile for permanence:\nexport PATH="%s:$PATH"\n' "$dir"
-  fi
+  printf '\n# Add to your shell profile for permanence:\nexport PATH="%s:$PATH"\n' "$dir"
 }
 
 persist_api_key() {
   key=$1
   shell_name=$(basename "${SHELL:-sh}")
   
-  # Check for a-shell first
-  if [ -n "$ASHELL" ] || [ -f "$HOME/.shortcuts/README" ]; then
-    # a-shell uses .profile
-    conf_file="$HOME/.profile"
-  else
-    case "$shell_name" in
-      zsh)  conf_file="$HOME/.zshrc" ;;
-      fish) conf_file="$HOME/.config/fish/config.fish" ;;
-      *)    # bash/sh (Linux: .bashrc/.profile, macOS: prefer .bash_profile if present)
-            if [ "$(uname)" = "Darwin" ] && [ -f "$HOME/.bash_profile" ]; then
-              conf_file="$HOME/.bash_profile"
-            elif [ -f "$HOME/.bashrc" ]; then
-              conf_file="$HOME/.bashrc"
-            else
-              conf_file="$HOME/.profile"
-            fi ;;
-    esac
-  fi
+  # Determine the best config file based on what exists and what shell we're using
+  conf_file=""
   
-  mkdir -p "$(dirname "$conf_file")" 2>/dev/null || true
+  case "$shell_name" in
+    zsh)  
+      # zsh always uses .zshrc
+      conf_file="$HOME/.zshrc" 
+      ;;
+    fish) 
+      # fish has its own config location
+      conf_file="$HOME/.config/fish/config.fish" 
+      ;;
+    *)    
+      # For sh/bash/dash, use a smart detection approach
+      # .profile is the most universal - works with sh and bash in login mode
+      # Many restricted environments (like a-shell) only read .profile
+      
+      # First, check what files already exist
+      if [ -f "$HOME/.profile" ]; then
+        conf_file="$HOME/.profile"
+      elif [ -f "$HOME/.bashrc" ] && [ -f "$HOME/.bash_profile" ]; then
+        # If both exist, prefer .bashrc and ensure .bash_profile sources it
+        conf_file="$HOME/.bashrc"
+        # Make sure .bash_profile sources .bashrc
+        if ! grep -q "source.*bashrc\|\..*bashrc" "$HOME/.bash_profile" 2>/dev/null; then
+          printf '\n# Source .bashrc\n[ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"\n' >> "$HOME/.bash_profile"
+        fi
+      elif [ -f "$HOME/.bash_profile" ]; then
+        conf_file="$HOME/.bash_profile"
+      elif [ -f "$HOME/.bashrc" ]; then
+        conf_file="$HOME/.bashrc"
+      else
+        # No existing files - create .profile as it's most universal
+        conf_file="$HOME/.profile"
+      fi
+      ;;
+  esac
+  
+  # Try to create config directory if needed
+  conf_dir=$(dirname "$conf_file")
+  [ -d "$conf_dir" ] || mkdir -p "$conf_dir" 2>/dev/null || true
 
   if [ "$shell_name" = "fish" ]; then
     line="set -Ux OPENROUTER_API_KEY \"$key\""
@@ -186,10 +200,22 @@ persist_api_key() {
   fi
 
   # Append only if not already present
-  if ! grep -qxF "$line" "$conf_file" 2>/dev/null; then
-    printf '\n%s\n' "$line" >> "$conf_file"
+  if [ -w "$conf_file" ] || [ ! -e "$conf_file" ]; then
+    if ! grep -qxF "$line" "$conf_file" 2>/dev/null; then
+      printf '\n%s\n' "$line" >> "$conf_file" 2>/dev/null || {
+        log "Warning: Could not persist API key to $conf_file"
+        return
+      }
+    fi
+    log "API key persisted to $conf_file"
+    
+    # Special note for Terminal.app users on macOS
+    if [ "$(uname)" = "Darwin" ] && [ "$conf_file" = "$HOME/.bashrc" ]; then
+      log "Note: Terminal.app loads .bash_profile by default. Make sure it sources .bashrc"
+    fi
+  else
+    log "Warning: Cannot write to $conf_file - API key set for this session only"
   fi
-  log "API key persisted to $conf_file"
 }
 
 configure_api_key() {
@@ -264,13 +290,9 @@ configure_api_key() {
 }
 
 main() {
-  # Check if running in a-shell
-  if [ -n "$ASHELL" ] || [ -f "$HOME/.shortcuts/README" ]; then
-    log "a-shell detected - using iOS-compatible paths"
-  fi
-  
   check_deps
   dir=$(pick_install_dir)
+  log "Installing to: $dir"
   install_aifixer "$dir"
   ensure_path "$dir"
   configure_api_key
