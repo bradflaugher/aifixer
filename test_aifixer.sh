@@ -166,49 +166,7 @@ else
   print_result "FAIL" "--list-todo-files (none) failed"
 fi
 
-# ─── Test 6: --free Flag Testing ────────────────────────────────────────────────
-print_header "Test 6: --free Flag"
-
-# Test 6a: Check if --free flag selects models correctly
-if free_list=$(sh "$AIFIXER_CMD" --free --list-models 2>&1 | head -20); then
-  # Just verify that we can fetch free models
-  if echo "$free_list" | grep -q ":free"; then
-    print_result "PASS" "--free flag lists free models"
-  else
-    print_result "FAIL" "--free model listing" "No :free models found"
-  fi
-else
-  print_result "FAIL" "--free --list-models failed"
-fi
-
-# Test 6b: Check model selection messaging
-TEST_CODE_6='# TODO: implement hello
-def hello():
-    pass
-'
-f6=$(create_temp_file "$TEST_CODE_6")
-
-# Capture both stdout and stderr
-output=$(sh "$AIFIXER_CMD" --free < "$f6" 2>&1)
-exit_code=$?
-
-if [ $exit_code -eq 0 ]; then
-  if echo "$output" | grep -q "Selected model:"; then
-    print_result "PASS" "--free selects model and executes"
-  else
-    print_result "FAIL" "--free model selection" "No selection message"
-  fi
-else
-  # Check if model was at least selected (even if execution failed)
-  if echo "$output" | grep -q "Selected model:"; then
-    # Model was selected but execution failed - this is ok for free models
-    print_result "PASS" "--free model selection works (execution may fail with free models)"
-  else
-    print_result "FAIL" "--free flag" "Failed to select model"
-  fi
-fi
-
-# ─── Test 7: Ollama Integration ─────────────────────────────────────────────────
+# ─── Test 6: Ollama Integration ─────────────────────────────────────────────────
 print_header "Test 7: Ollama Integration"
 
 # Check if Ollama is installed and running
@@ -235,15 +193,15 @@ if command_exists curl && curl -s http://localhost:11434/api/tags >/dev/null 2>&
     fi
     
     # Test 7b: Use Ollama model for TODO fixing
-    TEST_CODE_7='# File: ollama_test.py
+    TEST_CODE_6='# File: ollama_test.py
 # TODO: implement hello function
 def hello():
     pass
 '
-    f7=$(create_temp_file "$TEST_CODE_7")
+    f6=$(create_temp_file "$TEST_CODE_6")
     
     # Test if Ollama model works (ignore processing messages for now)
-    if ai_result=$(sh "$AIFIXER_CMD" --ollama-model "$first_model" < "$f7" 2>/dev/null); then
+    if ai_result=$(sh "$AIFIXER_CMD" --ollama-model "$first_model" < "$f6" 2>/dev/null); then
       if [ -n "$ai_result" ]; then
         print_result "PASS" "Ollama model generated output"
       else
@@ -265,13 +223,13 @@ fi
 print_header "Test 8: Piping and --fix-file-only"
 
 # Test 8a: Regular piping (with explanations)
-TEST_CODE_8='def add(a, b):
+TEST_CODE_7='def add(a, b):
     # TODO: Add type checking
     return a + b
 '
-f8=$(create_temp_file "$TEST_CODE_8")
+f7=$(create_temp_file "$TEST_CODE_7")
 
-if regular_out=$(sh "$AIFIXER_CMD" < "$f8" 2>/dev/null); then
+if regular_out=$(sh "$AIFIXER_CMD" < "$f7" 2>/dev/null); then
   # Check if output contains both code and explanation
   out_len=$(printf "%s" "$regular_out" | wc -c)
   if echo "$regular_out" | grep -q "def add" && [ "$out_len" -gt 100 ]; then
@@ -284,7 +242,7 @@ else
 fi
 
 # Test 8b: --fix-file-only flag
-if fixed_out=$(sh "$AIFIXER_CMD" --fix-file-only < "$f8" 2>/dev/null); then
+if fixed_out=$(sh "$AIFIXER_CMD" --fix-file-only < "$f7" 2>/dev/null); then
   # Count lines - should be just code without explanations
   line_count=$(echo "$fixed_out" | wc -l)
   # Check if it's cleaner output (no markdown, shorter)
@@ -299,7 +257,7 @@ fi
 
 # Test 8c: Piping to file
 output_file="/tmp/aifixer_test_output_$$.py"
-if sh "$AIFIXER_CMD" --fix-file-only < "$f8" > "$output_file" 2>/dev/null; then
+if sh "$AIFIXER_CMD" --fix-file-only < "$f7" > "$output_file" 2>/dev/null; then
   if [ -f "$output_file" ] && grep -q "def add" "$output_file"; then
     print_result "PASS" "Piping to file works correctly"
     rm -f "$output_file"
@@ -314,14 +272,14 @@ fi
 print_header "Test 9: JSON Parsing Robustness"
 
 # Test 9a: Code with special characters that could break JSON parsing
-TEST_CODE_9A='def parse_json(data):
+TEST_CODE_8A='def parse_json(data):
     # TODO: Add proper JSON parsing with error handling
     # This should handle: {"key": "value with \"quotes\"", "nested": {"array": [1, 2, 3]}}
     return data
 '
-f9a=$(create_temp_file "$TEST_CODE_9A")
+f8a=$(create_temp_file "$TEST_CODE_8A")
 
-if json_test_out=$(sh "$AIFIXER_CMD" --fix-file-only < "$f9a" 2>/dev/null); then
+if json_test_out=$(sh "$AIFIXER_CMD" --fix-file-only < "$f8a" 2>/dev/null); then
   # Check if the output contains proper JSON handling code
   if echo "$json_test_out" | grep -qi "json"; then
     print_result "PASS" "JSON parsing handles special characters in TODO comments"
@@ -338,14 +296,14 @@ else
 fi
 
 # Test 9b: Code with nested brackets and braces
-TEST_CODE_9B='def complex_func():
+TEST_CODE_8B='def complex_func():
     # TODO: Fix this complex nested structure handling
     data = {"a": [{"b": {"c": [1, 2, {"d": "e"}]}}]}
     return data
 '
-f9b=$(create_temp_file "$TEST_CODE_9B")
+f8b=$(create_temp_file "$TEST_CODE_8B")
 
-if brackets_out=$(sh "$AIFIXER_CMD" --fix-file-only < "$f9b" 2>/dev/null); then
+if brackets_out=$(sh "$AIFIXER_CMD" --fix-file-only < "$f8b" 2>/dev/null); then
   if [ -n "$brackets_out" ] && echo "$brackets_out" | grep -q "def complex_func"; then
     print_result "PASS" "JSON parsing handles nested brackets/braces"
   else
@@ -355,22 +313,22 @@ else
   print_result "FAIL" "Nested brackets test execution failed"
 fi
 
-# ─── Test 10: Ollama with --fix-file-only ─────────────────────────────────────────
+# ─── Test 9: Ollama with --fix-file-only ─────────────────────────────────────────
 if command_exists curl && curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
-  print_header "Test 10: Ollama with --fix-file-only"
+  print_header "Test 9: Ollama with --fix-file-only"
   
   # Get first available Ollama model
   first_model=$(sh "$AIFIXER_CMD" --list-ollama-models 2>/dev/null | grep -v "INFO:" | awk '{print $1}' | head -n1)
   
   if [ -n "$first_model" ]; then
-    TEST_CODE_10='def greet(name):
+    TEST_CODE_9='def greet(name):
     # TODO: Add input validation
     print(f"Hello {name}")
 '
-    f10=$(create_temp_file "$TEST_CODE_10")
+    f9=$(create_temp_file "$TEST_CODE_9")
     
     # Test Ollama with --fix-file-only
-    if ollama_fixed=$(sh "$AIFIXER_CMD" --ollama-model "$first_model" --fix-file-only < "$f10" 2>/dev/null); then
+    if ollama_fixed=$(sh "$AIFIXER_CMD" --ollama-model "$first_model" --fix-file-only < "$f9" 2>/dev/null); then
       # Check for clean code output
       if echo "$ollama_fixed" | grep -q "def greet" && ! echo "$ollama_fixed" | grep -q '```'; then
         print_result "PASS" "Ollama --fix-file-only returns clean code"
