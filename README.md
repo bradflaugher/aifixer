@@ -64,7 +64,16 @@ aifixer --prompt "write me an interactive bash script to harden my ubuntu instal
 cat broken_code.py | aifixer > fixed_code.py
 ```
 
-***NOTE*** the default prompt for aifixer asks the LLM to fix any TODOs in the file you pipe in. In order for that to work your file should have TODOs in it, see below for example input and output
+> **📝 Note about Default Behavior**
+> 
+> The default prompt for AIFixer is designed to fix TODOs and improve code quality. For best results when using the default prompt, ensure your input file contains TODO comments that describe what needs to be implemented or fixed.
+> 
+> **Example workflow:**
+> 1. Add TODO comments to your code describing what needs to be done
+> 2. Pipe the file to AIFixer: `cat broken_code.py | aifixer > fixed_code.py`
+> 3. AIFixer will implement the TODOs and improve the overall code quality
+> 
+> See the examples below for input and output demonstrations.
 
 <details>
 <summary><code>broken_code.py</code></summary>
