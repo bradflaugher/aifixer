@@ -11,7 +11,6 @@ REQUEST_TIMEOUT=60
 # Default values
 MODEL="anthropic/claude-sonnet-4"
 PROMPT="Fix the TODOs in the file below and output the full file: "
-SORT_BY="price"
 MIN_VALID_RESPONSE_LENGTH=100  # Minimum characters for a valid response
 
 # Color codes for output (disabled if not in terminal)
@@ -167,8 +166,6 @@ is_valid_response() {
 # ─── Model Listing & Selection ───────────────────────────────────────────────────
 
 fetch_openrouter_models() {
-    sort_key=$1
-    
     echo "Fetching OpenRouter models..." >&2
     
     tmpfile="/tmp/aifixer_models_response_$$"
@@ -209,7 +206,6 @@ fetch_ollama_models() {
 
 build_fix_prompt() {
     base_prompt="$1"
-    target_file="$2"
     
     echo "$base_prompt"
 }
@@ -219,10 +215,9 @@ process_with_openrouter() {
     model="$2"
     prompt="$3"
     input_text="$4"
-    target_file="$5"
     
     
-    full_prompt=$(build_fix_prompt "$prompt" "$target_file")
+    full_prompt=$(build_fix_prompt "$prompt")
     full_prompt="${full_prompt}${input_text}"
     
     
@@ -314,9 +309,8 @@ process_with_ollama() {
     model="$1"
     prompt="$2"
     input_text="$3"
-    target_file="$4"
     
-    full_prompt=$(build_fix_prompt "$prompt" "$target_file")
+    full_prompt=$(build_fix_prompt "$prompt")
     full_prompt="${full_prompt}${input_text}"
     
     # Build JSON payload
@@ -414,11 +408,9 @@ Model Selection:
 Model Listing:
   --list-models           List OpenRouter models
   --list-ollama-models    List Ollama models
-  --sort-by TYPE          Sort by: price, best, context (default: $SORT_BY)
 
-Prompt & File Options:
+Prompt Options:
   --prompt TEXT           Custom prompt (default: Fix TODOs...)
-  --target-file FILE      Target specific file for fixes
 
 Environment:
   OPENROUTER_API_KEY      Required for OpenRouter models
@@ -432,9 +424,6 @@ Examples:
   # Fix TODOs in a file
   cat file.py | aifixer --model anthropic/claude-3-sonnet > fixed.py
   
-  # Use a free model with automatic fallbacks
-  cat code.js | aifixer --free > output.js
-  
   # List available models
   aifixer --list-models
   
@@ -442,7 +431,7 @@ Examples:
   cat main.go | aifixer --ollama-model codellama > fixed.go
   
   # Custom prompt
-  echo "Explain this:" | aifixer --prompt "Please explain: "
+  cat complicated_program.c | aifixer --prompt "Please explain this code "
 
 EOF
 }
@@ -452,7 +441,6 @@ EOF
 main() {
     input_text=""
     ollama_model=""
-    target_file=""
     list_models=0
     list_ollama=0
     help_examples=0
@@ -490,16 +478,8 @@ main() {
                 list_ollama=1
                 shift
                 ;;
-            --sort-by)
-                SORT_BY="$2"
-                shift 2
-                ;;
             --prompt)
                 PROMPT="$2"
-                shift 2
-                ;;
-            --target-file)
-                target_file="$2"
                 shift 2
                 ;;
             --)
@@ -534,7 +514,7 @@ main() {
     fi
     
     if [ $list_models -eq 1 ]; then
-        fetch_openrouter_models "$SORT_BY"
+        fetch_openrouter_models
         exit 0
     fi
     
@@ -585,7 +565,7 @@ main() {
         current_model="$ollama_model"
         tmpfile="/tmp/aifixer_result_$$"
         (
-            result=$(process_with_ollama "$current_model" "$PROMPT" "$input_text" "$target_file")
+            result=$(process_with_ollama "$current_model" "$PROMPT" "$input_text")
             echo "$result" > "$tmpfile"
         ) &
         spinner "Processing via Ollama ($current_model)..." $!
@@ -597,7 +577,7 @@ main() {
         tmpfile_result="/tmp/aifixer_result_$$"
         tmpfile_status="/tmp/aifixer_status_$$"
         (
-            result=$(process_with_openrouter "$api_key" "$current_model" "$PROMPT" "$input_text" "$target_file")
+            result=$(process_with_openrouter "$api_key" "$current_model" "$PROMPT" "$input_text")
             echo "$?" > "$tmpfile_status"
             echo "$result" > "$tmpfile_result"
         ) &
@@ -624,7 +604,7 @@ main() {
                 tmpfile_result="/tmp/aifixer_result_$$"
                 tmpfile_status="/tmp/aifixer_status_$$"
                 (
-                    result=$(process_with_openrouter "$api_key" "$current_model" "$PROMPT" "$input_text" "$target_file")
+                    result=$(process_with_openrouter "$api_key" "$current_model" "$PROMPT" "$input_text")
                     echo "$?" > "$tmpfile_status"
                     echo "$result" > "$tmpfile_result"
                 ) &
