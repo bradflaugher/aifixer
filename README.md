@@ -25,7 +25,7 @@
 cat broken_code.py | aifixer > fixed_code.py
 ```
 <details>
-<summary>broken_code.py</summary>
+<summary>```broken_code.py```</summary>
 
 ```python
 def process_user_data(user_id):
@@ -40,7 +40,7 @@ def process_user_data(user_id):
 </details>
 
 <details>
-<summary>fixed_code.py</summary>
+<summary>```fixed_code.py```</summary>
 
 **Output:**
 ```python
