@@ -394,22 +394,6 @@ process_with_ollama() {
 
 # ─── TODO File Analysis ────────────────────────────────────────────────────────
 
-analyze_codebase_for_todos() {
-    text="$1"
-    echo "$text" | awk '
-        /^# File: / {
-            file = substr($0, 9)
-            content = ""
-        }
-        /^# File: /,/^# File: |$/ {
-            if (!/^# File: /) content = content "\n" $0
-        }
-        /TODO|FIXME/ {
-            if (file) print file
-            file = ""
-        }
-    ' | sort -u
-}
 
 # ─── Help Functions ────────────────────────────────────────────────────────────
 
@@ -435,7 +419,6 @@ Model Listing:
 Prompt & File Options:
   --prompt TEXT           Custom prompt (default: Fix TODOs...)
   --target-file FILE      Target specific file for fixes
-  --list-todo-files       List files containing TODOs
 
 Environment:
   OPENROUTER_API_KEY      Required for OpenRouter models
@@ -472,7 +455,6 @@ main() {
     target_file=""
     list_models=0
     list_ollama=0
-    list_todos=0
     help_examples=0
     show_version=0
     text_args=""
@@ -519,10 +501,6 @@ main() {
             --target-file)
                 target_file="$2"
                 shift 2
-                ;;
-            --list-todo-files)
-                list_todos=1
-                shift
                 ;;
             --)
                 shift
@@ -585,16 +563,6 @@ main() {
         fi
     fi
     
-    # List TODO files if requested
-    if [ $list_todos -eq 1 ]; then
-        todo_files=$(analyze_codebase_for_todos "$input_text")
-        if [ -z "$todo_files" ]; then
-            echo "No files with TODOs found"
-        else
-            echo "$todo_files"
-        fi
-        exit 0
-    fi
     
     # Fallback models setup
     fallback_models=""

@@ -52,7 +52,7 @@ command_exists() {
 
 create_temp_file() {
   content=$1
-  tmp=$(mktemp /tmp/aifixer_test_XXXXXX.py)
+  tmp=$(mktemp /tmp/aifixer_test_XXXXXX)
   printf "%s\n" "$content" > "$tmp"
   # Append to space-separated list
   TMPFILES="$TMPFILES $tmp"
@@ -129,45 +129,8 @@ else
   fi
 fi
 
-# ─── Test 4: --list-todo-files (some TODOs) ───────────────────────────────────
-print_header "Test 4: --list-todo-files (with TODOs)"
-
-TEST_CODE_4='# File: foo.py
-print("ok")
-# File: bar.py
-# TODO: fix me
-'
-f4=$(create_temp_file "$TEST_CODE_4")
-if list_out=$(sh "$AIFIXER_CMD" --list-todo-files < "$f4"); then
-  if echo "$list_out" | grep -x "bar.py" >/dev/null && ! echo "$list_out" | grep -x "foo.py" >/dev/null; then
-    print_result "PASS" "--list-todo-files correctly listed 'bar.py'"
-  else
-    print_result "FAIL" "--list-todo-files content" "Got: $(echo "$list_out" | tr '\n' ' ')"
-  fi
-else
-  print_result "FAIL" "--list-todo-files failed"
-fi
-
-# ─── Test 5: --list-todo-files (no TODOs) ─────────────────────────────────────
-print_header "Test 5: --list-todo-files (none)"
-
-TEST_CODE_5='# File: only.py
-print("all good")
-'
-f5=$(create_temp_file "$TEST_CODE_5")
-if no_list_out=$(sh "$AIFIXER_CMD" --list-todo-files < "$f5"); then
-  # Use grep to check for pattern
-  if echo "$no_list_out" | grep -i "no.*TODO" >/dev/null; then
-    print_result "PASS" "--list-todo-files reports none"
-  else
-    print_result "FAIL" "--list-todo-files expected 'no TODOs'" "Got: '$no_list_out'"
-  fi
-else
-  print_result "FAIL" "--list-todo-files (none) failed"
-fi
-
-# ─── Test 6: Ollama Integration ─────────────────────────────────────────────────
-print_header "Test 7: Ollama Integration"
+# ─── Test 4: Ollama Integration ─────────────────────────────────────────────────
+print_header "Test 4: Ollama Integration"
 
 # Check if Ollama is installed and running
 if command_exists curl && curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
@@ -219,10 +182,10 @@ else
   print_result "PASS" "Ollama integration (skipped - not installed)"
 fi
 
-# ─── Test 8: Piping ─────────────────────────────────────────
-print_header "Test 8: Piping"
+# ─── Test 5: Piping ─────────────────────────────────────────
+print_header "Test 5: Piping"
 
-# Test 8a: Regular piping (with explanations)
+# Test 5a: Regular piping (with explanations)
 TEST_CODE_7='def add(a, b):
     # TODO: Add type checking
     return a + b
@@ -241,7 +204,7 @@ else
   print_result "FAIL" "Regular piping failed"
 fi
 
-# Test 8b: Piping to file
+# Test 5b: Piping to file
 output_file="/tmp/aifixer_test_output_$$.py"
 if sh "$AIFIXER_CMD" < "$f7" > "$output_file" 2>/dev/null; then
   if [ -f "$output_file" ] && [ -s "$output_file" ]; then
@@ -254,10 +217,10 @@ else
   print_result "FAIL" "Piping to file execution failed"
 fi
 
-# ─── Test 9: JSON Parsing Robustness ─────────────────────────────────────────
-print_header "Test 9: JSON Parsing Robustness"
+# ─── Test 6: JSON Parsing Robustness ─────────────────────────────────────────
+print_header "Test 6: JSON Parsing Robustness"
 
-# Test 9a: Code with special characters that could break JSON parsing
+# Test 6a: Code with special characters that could break JSON parsing
 TEST_CODE_8A='def parse_json(data):
     # TODO: Add proper JSON parsing with error handling
     # This should handle: {"key": "value with \"quotes\"", "nested": {"array": [1, 2, 3]}}
@@ -276,7 +239,7 @@ else
   print_result "FAIL" "JSON parsing test execution failed"
 fi
 
-# Test 9b: Code with nested brackets and braces
+# Test 6b: Code with nested brackets and braces
 TEST_CODE_8B='def complex_func():
     # TODO: Fix this complex nested structure handling
     data = {"a": [{"b": {"c": [1, 2, {"d": "e"}]}}]}
