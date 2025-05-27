@@ -11,11 +11,6 @@ REQUEST_TIMEOUT=60
 # Default values
 MODEL="anthropic/claude-sonnet-4"
 PROMPT="Fix the TODOs in the file below and output the full file: "
-VERBOSE=0
-DEBUG=0
-FIX_FILE_ONLY=0
-FREE=0
-MAX_FALLBACKS=2
 SORT_BY="price"
 MIN_VALID_RESPONSE_LENGTH=100  # Minimum characters for a valid response
 
@@ -38,20 +33,6 @@ fi
 
 log_error() {
     printf "${RED}ERROR: %s${NC}\n" "$*" >&2
-}
-
-log_warning() {
-    printf "${YELLOW}WARNING: %s${NC}\n" "$*" >&2
-}
-
-log_info() {
-    printf "${GREEN}INFO: %s${NC}\n" "$*" >&2
-}
-
-log_debug() {
-    if [ $DEBUG -eq 1 ]; then
-        printf "${BLUE}DEBUG: %s${NC}\n" "$*" >&2
-    fi
 }
 
 # JSON utilities for native shell parsing
@@ -130,27 +111,6 @@ spinner() {
     printf "\r%*s\r" $((${#message} + 4)) "" >&2
 }
 
-# Extract fixed file from AI output
-extract_fixed_file() {
-    output="$1"
-    
-    # First try to extract from code blocks
-    code_block=$(echo "$output" | sed -n '/^```/,/^```$/p' | sed '1d;$d')
-    if [ -n "$code_block" ]; then
-        echo "$code_block"
-        return
-    fi
-    
-    # Try to skip common preamble patterns
-    cleaned=$(echo "$output" | sed -n '/^def\|^class\|^import\|^from\|^#!\|^\/\*\|^\/\//,$p')
-    if [ -n "$cleaned" ]; then
-        echo "$cleaned"
-        return
-    fi
-    
-    # Otherwise, return original output
-    echo "$output"
-}
 
 # Check if response is valid (not empty, not just whitespace, has minimum length)
 is_valid_response() {
@@ -158,7 +118,6 @@ is_valid_response() {
     
     # Check if empty
     if [ -z "$content" ]; then
-        log_debug "Response validation failed: empty content"
         return 1
     fi
     
@@ -169,13 +128,11 @@ is_valid_response() {
     # Check if it's just error messages or common failure patterns first
     # (before length check to catch short error responses)
     if echo "$content" | grep -qE "^[[:space:]]*(error|Error|ERROR|null|undefined|None|\{\}|\[\])[[:space:]]*$"; then
-        log_debug "Response validation failed: appears to be an error response"
         return 1
     fi
     
     # Check for responses that look like incomplete JSON or cut-off responses
     if echo "$content" | grep -qE "^[[:space:]]*\{[^}]*$|^[[:space:]]*\[[^\]]*$"; then
-        log_debug "Response validation failed: appears to be incomplete JSON"
         return 1
     fi
     
@@ -186,25 +143,21 @@ is_valid_response() {
         # Check if it's a very short last line that might be cut off
         last_line_length=${#last_line}
         if [ $last_line_length -lt 50 ]; then
-            log_debug "Response validation failed: appears to be cut off mid-sentence"
             return 1
         fi
     fi
     
     if [ $length -lt $MIN_VALID_RESPONSE_LENGTH ]; then
-        log_debug "Response validation failed: too short (${length} chars, minimum ${MIN_VALID_RESPONSE_LENGTH})"
         return 1
     fi
     
     # Check for common API error patterns
     if echo "$content" | grep -qiE "(api error|rate limit|quota exceeded|unauthorized|forbidden|internal server error)"; then
-        log_debug "Response validation failed: contains API error message"
         return 1
     fi
     
     # Check for responses that are just whitespace or newlines
     if [ "$length" -eq 0 ]; then
-        log_debug "Response validation failed: only whitespace"
         return 1
     fi
     
@@ -216,7 +169,7 @@ is_valid_response() {
 fetch_openrouter_models() {
     sort_key=$1
     
-    log_info "Fetching OpenRouter models..."
+    echo "Fetching OpenRouter models..." >&2
     
     tmpfile="/tmp/aifixer_models_response_$$"
     (
@@ -238,49 +191,9 @@ fetch_openrouter_models() {
     rm -f "$tmpfile"
 }
 
-get_free_models() {
-    sort_key=$1
-    
-    tmpfile="/tmp/aifixer_models_response_$$"
-    curl -s -m $REQUEST_TIMEOUT "$OPENROUTER_URL/models" > "$tmpfile" 2>/dev/null
-    
-    if [ ! -s "$tmpfile" ]; then
-        log_error "Could not fetch OpenRouter models"
-        rm -f "$tmpfile"
-        return 1
-    fi
-    
-    # Parse JSON to extract free models with context length
-    # Split by model entries and process each
-    tr '}' '\n' < "$tmpfile" | while IFS= read -r line; do
-        # Skip if no id field
-        echo "$line" | grep -q '"id":' || continue
-        
-        # Extract model ID
-        model_id=$(echo "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
-        [ -z "$model_id" ] && continue
-        
-        # Extract context length (default to 0 if not found)
-        context_length=$(echo "$line" | sed -n 's/.*"context_length":\([0-9]*\).*/\1/p')
-        [ -z "$context_length" ] && context_length=0
-        
-        # Check if free model (has :free suffix)
-        if echo "$model_id" | grep -q ':free$'; then
-            printf "%012d %s\n" "$context_length" "$model_id"
-            continue
-        fi
-        
-        # Check if pricing shows free (prompt price is 0)
-        if echo "$line" | grep -q '"prompt":"0"'; then
-            printf "%012d %s\n" "$context_length" "$model_id"
-        fi
-    done | sort -nr | cut -d' ' -f2-
-    
-    rm -f "$tmpfile"
-}
 
 fetch_ollama_models() {
-    log_info "Fetching Ollama models..."
+    echo "Fetching Ollama models..." >&2
     
     response=$(curl -s -m $REQUEST_TIMEOUT "$OLLAMA_URL/tags" 2>/dev/null)
     if [ $? -ne 0 ]; then
@@ -296,16 +209,9 @@ fetch_ollama_models() {
 
 build_fix_prompt() {
     base_prompt="$1"
-    fix_only=$2
-    target_file="$3"
+    target_file="$2"
     
-    if [ $fix_only -eq 0 ]; then
-        echo "$base_prompt"
-    elif [ -n "$target_file" ]; then
-        echo "Fix the TODOs in the file '$target_file' from the codebase below. Only return the complete fixed version of that file, nothing else. Do not include any explanations, headers, or markdown formatting: "
-    else
-        echo "Fix the TODOs in the code below. If this is a flattened codebase, identify the file that has TODOs and only return the complete fixed version of that file. Do not include any explanations, headers, or markdown formatting: "
-    fi
+    echo "$base_prompt"
 }
 
 process_with_openrouter() {
@@ -313,128 +219,12 @@ process_with_openrouter() {
     model="$2"
     prompt="$3"
     input_text="$4"
-    fix_only=$5
-    target_file="$6"
+    target_file="$5"
     
-    # Test mode: return mock response for test API key
-    if [ "$api_key" = "test-empty-response" ]; then
-        log_debug "Test mode: Simulating empty response"
-        # Simulate an API response with empty content
-        if [ "$model" = "google/gemini-2.0-flash-exp:free" ]; then
-            # First model returns empty
-            echo ""
-            return 0
-        else
-            # Fallback models return valid response
-            echo "Roses are red,\nViolets are blue,\nFallback worked,\nJust for you!"
-            return 0
-        fi
-    elif [ "$api_key" = "test-truncated" ]; then
-        log_debug "Test mode: Simulating truncated response"
-        if [ "$model" = "google/gemini-2.0-flash-exp:free" ]; then
-            # First model returns truncated response
-            echo "Here is a poem about hello world:
-
-The screen lights up with"
-            return 0
-        elif [ "$model" = "meta-llama/llama-4-scout:free" ]; then
-            # Second model also truncated
-            echo "A simple greeting echoes through the"
-            return 0
-        else
-            # Third model returns complete response
-            echo "Hello World, a phrase so bright,
-Where code begins its dancing flight.
-A simple start, yet profound and true,
-Opening doors to worlds anew.
-
-In every language, framework, tool,
-This greeting marks the coding school.
-From novice hands to expert's art,
-Hello World remains the start."
-            return 0
-        fi
-    elif [ "$api_key" = "test-key-12345" ]; then
-        log_debug "Test mode: Using mock response"
-        
-        # Generate appropriate mock response based on input
-        if echo "$input_text" | grep -q "def greet"; then
-            # Greeting function test
-            if [ $fix_only -eq 1 ]; then
-                echo "def greet():
-    print(\"Hello, World!\")"
-            else
-                echo "I've implemented the greeting function with a print statement that outputs 'Hello, World!'."
-            fi
-        elif echo "$input_text" | grep -q "def add"; then
-            # Add function test
-            if [ $fix_only -eq 1 ]; then
-                echo "def add(a, b):
-    # Type checking added
-    if not isinstance(a, (int, float)) or not isinstance(b, (int, float)):
-        raise TypeError(\"Arguments must be numbers\")
-    return a + b"
-            else
-                echo "I've added type checking to the add function to ensure both arguments are numbers before performing the addition. This helps prevent runtime errors and makes the function more robust.
-
-Here's the improved code:
-
-\`\`\`python
-def add(a, b):
-    # Type checking added
-    if not isinstance(a, (int, float)) or not isinstance(b, (int, float)):
-        raise TypeError(\"Arguments must be numbers\")
-    return a + b
-\`\`\`
-
-The function now validates that both parameters are numeric types (int or float) and raises a TypeError with a descriptive message if invalid types are passed."
-            fi
-        elif echo "$input_text" | grep -q "def parse_json"; then
-            # JSON parsing test
-            if [ $fix_only -eq 1 ]; then
-                echo "import json
-
-def parse_json(data):
-    try:
-        return json.loads(data)
-    except json.JSONDecodeError as e:
-        print(f\"JSON parsing error: {e}\")
-        return None"
-            else
-                echo "I've implemented proper JSON parsing with error handling using Python's built-in json module."
-            fi
-        elif echo "$input_text" | grep -q "def complex_func"; then
-            # Complex function test with nested structures
-            if [ $fix_only -eq 1 ]; then
-                echo "def complex_func():
-    # Fixed complex nested structure handling with proper validation
-    data = {\"a\": [{\"b\": {\"c\": [1, 2, {\"d\": \"e\"}]}}]}
     
-    # Add validation for nested structure
-    if isinstance(data, dict) and \"a\" in data:
-        if isinstance(data[\"a\"], list) and len(data[\"a\"]) > 0:
-            return data
-    
-    return {}"
-            else
-                echo "I've improved the complex nested structure handling with proper validation."
-            fi
-        else
-            # Default response
-            if [ $fix_only -eq 1 ]; then
-                echo "def greet():
-    print(\"Hello, World!\")"
-            else
-                echo "I've implemented the greeting function with a print statement that outputs 'Hello, World!'."
-            fi
-        fi
-        return 0
-    fi
-    
-    full_prompt=$(build_fix_prompt "$prompt" $fix_only "$target_file")
+    full_prompt=$(build_fix_prompt "$prompt" "$target_file")
     full_prompt="${full_prompt}${input_text}"
     
-    log_debug "Using model: $model"
     
     # Build JSON payload
     escaped_prompt=$(escape_json_string "$full_prompt")
@@ -458,8 +248,7 @@ def parse_json(data):
         if [ -z "$error_msg" ]; then
             error_msg=$(echo "$response" | grep -o '"error"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*:"//' | sed 's/"$//')
         fi
-        log_debug "API error response: $response"
-        log_warning "API error: ${error_msg:-Unknown error}"
+        log_error "API error: ${error_msg:-Unknown error}"
         return 1
     fi
     
@@ -511,37 +300,23 @@ def parse_json(data):
         }
     ')
     
-    log_debug "Raw API response (first 500 chars): $(echo "$response" | head -c 500)"
-    log_debug "Extracted content length: ${#content}"
-    log_debug "Extracted content (first 100 chars): $(echo "$content" | head -c 100)"
     
-    # Additional debug for empty responses
-    if [ -z "$content" ] || [ "${#content}" -lt 5 ]; then
-        log_debug "Response appears to be empty or very short"
-        log_debug "Full response for debugging: $response"
-    fi
     
     # Validate response
     if ! is_valid_response "$content"; then
-        log_debug "Invalid or empty response from API: '$(echo "$content" | head -c 100)...'"
         return 1
     fi
     
-    if [ $fix_only -eq 1 ]; then
-        extract_fixed_file "$content"
-    else
-        echo "$content"
-    fi
+    echo "$content"
 }
 
 process_with_ollama() {
     model="$1"
     prompt="$2"
     input_text="$3"
-    fix_only=$4
-    target_file="$5"
+    target_file="$4"
     
-    full_prompt=$(build_fix_prompt "$prompt" $fix_only "$target_file")
+    full_prompt=$(build_fix_prompt "$prompt" "$target_file")
     full_prompt="${full_prompt}${input_text}"
     
     # Build JSON payload
@@ -549,7 +324,6 @@ process_with_ollama() {
     payload=$(printf '{"model": "%s", "messages": [{"role": "user", "content": "%s"}], "stream": false}' \
         "$model" "$escaped_prompt")
     
-    log_debug "Sending request to Ollama with payload: $payload"
     
     response=$(curl -s -m $REQUEST_TIMEOUT \
         -H "Content-Type: application/json" \
@@ -562,7 +336,6 @@ process_with_ollama() {
         exit 1
     fi
     
-    log_debug "Received response from Ollama: $(echo "$response" | cut -c1-200)..."
     
     # Extract content from Ollama response using awk for robust JSON parsing
     content=$(echo "$response" | awk '
@@ -612,18 +385,11 @@ process_with_ollama() {
         }
     ')
     
-    if [ -n "$content" ]; then
-        log_debug "Extracted content: $(echo "$content" | cut -c1-100)..."
-    else
+    if [ -z "$content" ]; then
         log_error "Failed to extract content from Ollama response"
-        log_debug "Full response: $response"
     fi
     
-    if [ $fix_only -eq 1 ]; then
-        extract_fixed_file "$content"
-    else
-        echo "$content"
-    fi
+    echo "$content"
 }
 
 # ─── TODO File Analysis ────────────────────────────────────────────────────────
@@ -656,13 +422,10 @@ Usage: aifixer [OPTIONS] [TEXT...]
 Options:
   --version                Show version
   --help-examples          Show usage examples
-  -v, --verbose           Enable verbose debugging output
 
 Model Selection:
   --model MODEL           Model to use (default: $MODEL)
   --ollama-model MODEL    Use Ollama model instead
-  --free                  Auto-select free/cheap model with fallbacks
-  --max-fallbacks N       Number of fallback models (default: $MAX_FALLBACKS)
 
 Model Listing:
   --list-models           List OpenRouter models
@@ -671,7 +434,6 @@ Model Listing:
 
 Prompt & File Options:
   --prompt TEXT           Custom prompt (default: Fix TODOs...)
-  --fix-file-only         Only output fixed code, no explanations
   --target-file FILE      Target specific file for fixes
   --list-todo-files       List files containing TODOs
 
@@ -730,25 +492,12 @@ main() {
                 help_examples=1
                 shift
                 ;;
-            -v|--verbose)
-                VERBOSE=1
-                DEBUG=1
-                shift
-                ;;
             --model)
                 MODEL="$2"
                 shift 2
                 ;;
             --ollama-model)
                 ollama_model="$2"
-                shift 2
-                ;;
-            --free)
-                FREE=1
-                shift
-                ;;
-            --max-fallbacks)
-                MAX_FALLBACKS="$2"
                 shift 2
                 ;;
             --list-models)
@@ -766,10 +515,6 @@ main() {
             --prompt)
                 PROMPT="$2"
                 shift 2
-                ;;
-            --fix-file-only)
-                FIX_FILE_ONLY=1
-                shift
                 ;;
             --target-file)
                 target_file="$2"
@@ -811,7 +556,6 @@ main() {
     fi
     
     if [ $list_models -eq 1 ]; then
-        log_info "Tip: You can browse all available models at https://openrouter.ai/models"
         fetch_openrouter_models "$SORT_BY"
         exit 0
     fi
@@ -852,33 +596,8 @@ main() {
         exit 0
     fi
     
-    # Free model selection
+    # Fallback models setup
     fallback_models=""
-    if [ $FREE -eq 1 ] && [ -z "$ollama_model" ]; then
-        # Get free models
-        tmpfile="/tmp/aifixer_free_models_$$"
-        (
-            get_free_models "$SORT_BY" > "$tmpfile"
-        ) &
-        pid=$!
-        spinner "Selecting free/cheap models..." $pid
-        free_models=$(cat "$tmpfile" 2>/dev/null)
-        rm -f "$tmpfile"
-        
-        if [ -z "$free_models" ]; then
-            log_error "No free/cheap models found"
-            exit 1
-        fi
-        
-        # Set primary model and fallbacks
-        MODEL=$(echo "$free_models" | head -n1)
-        fallback_models=$(echo "$free_models" | tail -n+2 | head -n$MAX_FALLBACKS)
-        
-        log_info "Selected model: $MODEL"
-        if [ -n "$fallback_models" ]; then
-            log_info "Fallback models: $(echo "$fallback_models" | tr '\n' ' ')"
-        fi
-    fi
     
     # Check API key
     api_key="${OPENROUTER_API_KEY:-}"
@@ -898,7 +617,7 @@ main() {
         current_model="$ollama_model"
         tmpfile="/tmp/aifixer_result_$$"
         (
-            result=$(process_with_ollama "$current_model" "$PROMPT" "$input_text" $FIX_FILE_ONLY "$target_file")
+            result=$(process_with_ollama "$current_model" "$PROMPT" "$input_text" "$target_file")
             echo "$result" > "$tmpfile"
         ) &
         spinner "Processing via Ollama ($current_model)..." $!
@@ -910,7 +629,7 @@ main() {
         tmpfile_result="/tmp/aifixer_result_$$"
         tmpfile_status="/tmp/aifixer_status_$$"
         (
-            result=$(process_with_openrouter "$api_key" "$current_model" "$PROMPT" "$input_text" $FIX_FILE_ONLY "$target_file")
+            result=$(process_with_openrouter "$api_key" "$current_model" "$PROMPT" "$input_text" "$target_file")
             echo "$?" > "$tmpfile_status"
             echo "$result" > "$tmpfile_result"
         ) &
@@ -922,37 +641,22 @@ main() {
         
         # Check if primary model succeeded with valid response
         if [ "$status" -eq 0 ] && is_valid_response "$result"; then
-            log_debug "Primary model $current_model succeeded"
             success=1
         else
             # Primary model failed or returned invalid response
-            if [ "$status" -ne 0 ]; then
-                log_warning "Primary model $current_model failed (exit code: $status)"
-                log_debug "Error output: $(echo "$result" | head -c 500)"
-            else
-                log_warning "Primary model $current_model returned invalid/empty response"
-                log_debug "Response length: ${#result} chars"
-                log_debug "Response content: '$(echo "$result" | head -c 200)...'"
-                # Check if response was too short
-                if [ "${#result}" -lt "$MIN_VALID_RESPONSE_LENGTH" ] && [ "${#result}" -gt 0 ]; then
-                    log_debug "Response was too short (${#result} chars < $MIN_VALID_RESPONSE_LENGTH minimum)"
-                fi
-            fi
             
             # Try fallback models if available
             if [ -n "$fallback_models" ]; then
-                log_info "Trying fallback models..."
                 
                 # Try fallback models (fixed: no subshell issue)
                 while IFS= read -r model; do
                 [ -z "$model" ] && continue
                 current_model="$model"
-                log_info "Trying fallback model: $current_model"
                 
                 tmpfile_result="/tmp/aifixer_result_$$"
                 tmpfile_status="/tmp/aifixer_status_$$"
                 (
-                    result=$(process_with_openrouter "$api_key" "$current_model" "$PROMPT" "$input_text" $FIX_FILE_ONLY "$target_file")
+                    result=$(process_with_openrouter "$api_key" "$current_model" "$PROMPT" "$input_text" "$target_file")
                     echo "$?" > "$tmpfile_status"
                     echo "$result" > "$tmpfile_result"
                 ) &
@@ -964,18 +668,9 @@ main() {
                 
                 # Check if this model succeeded with valid response
                 if [ "$status" -eq 0 ] && is_valid_response "$result"; then
-                    log_info "✓ Fallback model $current_model succeeded"
                     success=1
                     break
                 else
-                    if [ "$status" -ne 0 ]; then
-                        log_warning "Fallback model $current_model failed (exit code: $status)"
-                        log_debug "Fallback error: $(echo "$result" | head -c 200)"
-                    else
-                        log_warning "Fallback model $current_model returned invalid/empty response"
-                        log_debug "Invalid fallback response length: ${#result} chars"
-                        log_debug "Invalid fallback response: '$(echo "$result" | head -c 100)...'"
-                    fi
                     # Small delay before trying next model to avoid rate limits
                     sleep 1
                 fi
@@ -995,15 +690,11 @@ EOF
     end_time=$(date +%s)
     elapsed=$((end_time - start_time))
     if [ -t 2 ]; then
-        log_info "Completed in ${elapsed}s with $current_model ✓"
+        echo "Completed in ${elapsed}s with $current_model ✓" >&2
     fi
     
     # Output result
-    if [ $FIX_FILE_ONLY -eq 1 ]; then
-        extract_fixed_file "$result"
-    else
-        echo "$result"
-    fi
+    echo "$result"
 }
 
 # Run main function

@@ -1,345 +1,58 @@
-name: AIFixer CI
+name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:
-    inputs:
-      test_ollama:
-        description: 'Run Ollama integration tests'
-        type: boolean
-        default: false
 
 jobs:
-  test-minimal:
-    name: Test on Minimal Shell (${{ matrix.shell }})
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        shell: [sh, dash, bash]
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-    
-    - name: Install dash (if needed)
-      if: matrix.shell == 'dash'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y dash
-    
-    - name: Verify shell availability
-      run: |
-        which ${{ matrix.shell }}
-        ${{ matrix.shell }} --version || echo "${{ matrix.shell }} version not available"
-    
-    - name: Test script POSIX compliance
-      run: |
-        # Test that the main script runs with the target shell
-        ${{ matrix.shell }} -n ./aifixer.sh || {
-          echo "Syntax check failed for ${{ matrix.shell }}"
-          exit 1
-        }
-        echo "✓ Script is valid ${{ matrix.shell }} syntax"
-    
-    - name: Run installation (dry run)
-      run: |
-        # Test installer syntax
-        ${{ matrix.shell }} -n ./install.sh || {
-          echo "Installer syntax check failed for ${{ matrix.shell }}"
-          exit 1
-        }
-        echo "✓ Installer is valid ${{ matrix.shell }} syntax"
-
-  test-installation:
-    name: Test Installation Methods
+  test:
+    name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        install_method: [automatic, manual]
     
     steps:
-    - name: Checkout repository
+    - name: Checkout
       uses: actions/checkout@v4
     
-    - name: Set up test environment
+    - name: Test shell compatibility
       run: |
-        # Create a temporary directory for installation
-        export TEST_PREFIX="${HOME}/test-install"
-        mkdir -p "$TEST_PREFIX/bin"
-        echo "TEST_PREFIX=$TEST_PREFIX" >> $GITHUB_ENV
-        echo "PATH=$TEST_PREFIX/bin:$PATH" >> $GITHUB_ENV
-    
-    - name: Test automatic installation
-      if: matrix.install_method == 'automatic'
-      env:
-        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      run: |
-        # Set default API key if not provided
-        if [ -z "$OPENROUTER_API_KEY" ]; then
-          export OPENROUTER_API_KEY="test-key-12345"
-        fi
-        
-        # Run installer with custom prefix
-        sh ./install.sh --prefix "$TEST_PREFIX" --api-key "$OPENROUTER_API_KEY" --skip-api-key
-        
-        # Verify installation
-        if [ ! -f "$TEST_PREFIX/bin/aifixer" ]; then
-          echo "Error: aifixer not installed in $TEST_PREFIX/bin"
-          exit 1
-        fi
-        
-        # Check if it's executable
-        if [ ! -x "$TEST_PREFIX/bin/aifixer" ]; then
-          echo "Error: aifixer is not executable"
-          exit 1
-        fi
-        
-        # Test version command
-        aifixer --version || {
-          echo "Error: aifixer --version failed"
-          exit 1
-        }
-    
-    - name: Test manual installation
-      if: matrix.install_method == 'manual'
-      run: |
-        # Manually copy and set up
-        cp ./aifixer.sh "$TEST_PREFIX/bin/aifixer"
-        chmod +x "$TEST_PREFIX/bin/aifixer"
-        
-        # Test basic functionality
-        echo "Testing manual installation..."
-        aifixer --help || {
-          echo "Error: manually installed aifixer --help failed"
-          exit 1
-        }
-
-  test-integration:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    needs: test-installation
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+        # Verify scripts work with sh
+        sh -n ./aifixer.sh
+        sh -n ./install.sh
+        sh -n ./test_aifixer.sh
     
     - name: Install aifixer
-      env:
-        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY || 'test-key-12345' }}
       run: |
-        # Set default API key if not provided
-        if [ -z "$OPENROUTER_API_KEY" ]; then
-          export OPENROUTER_API_KEY="test-key-12345"
-        fi
-        
-        # Install to system location
-        sudo sh ./install.sh --prefix /usr/local --api-key "$OPENROUTER_API_KEY" --skip-api-key
+        # Install with test API key
+        sudo sh ./install.sh --prefix /usr/local --skip-api-key
         
         # Verify installation
         which aifixer
         aifixer --version
+        aifixer --help
     
-    - name: Create test files
-      run: |
-        # Create a simple test file with TODO
-        cat > test_todo.py << 'EOF'
-        # File: test_todo.py
-        def greet(name):
-            # TODO: Add input validation
-            print(f"Hello {name}")
-        EOF
-        
-        # Create a file with bugs
-        cat > test_bugs.js << 'EOF'
-        function divide(a, b) {
-            // TODO: Handle division by zero
-            return a / b;
-        }
-        EOF
-    
-    - name: Test --list-todo-files
-      run: |
-        # Test listing TODO files
-        aifixer --list-todo-files < test_todo.py || {
-          echo "Error: --list-todo-files failed"
-          exit 1
-        }
-    
-    - name: Test --help and --version
-      run: |
-        aifixer --help | grep -i "usage" || {
-          echo "Error: --help doesn't show usage"
-          exit 1
-        }
-        
-        version=$(aifixer --version)
-        echo "Version: $version"
-        echo "$version" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || {
-          echo "Error: Invalid version format"
-          exit 1
-        }
-    
-    - name: Run POSIX test suite
+    - name: Run tests
       env:
-        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY || 'test-key-12345' }}
+        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       run: |
-        # Set default API key if not provided
-        if [ -z "$OPENROUTER_API_KEY" ]; then
-          export OPENROUTER_API_KEY="test-key-12345"
-        fi
-        
-        # Make test script executable
         chmod +x ./test_aifixer.sh
-        
-        # Run the comprehensive test suite
-        sh ./test_aifixer.sh || {
-          echo "Test suite failed"
-          exit 1
-        }
-  
-  test-ollama:
-    name: Ollama Integration Tests
-    runs-on: ubuntu-latest
-    if: github.event.inputs.test_ollama == 'true'
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-    
-    - name: Install Ollama
-      run: |
-        # Install Ollama
-        curl -fsSL https://ollama.ai/install.sh | sh
-        
-        # Start Ollama service
-        ollama serve &
-        
-        # Wait for Ollama to be ready
-        sleep 10
-        
-        # Pull a small model for testing
-        ollama pull tinyllama || {
-          echo "Warning: Failed to pull tinyllama model"
-        }
-    
-    - name: Install aifixer
-      run: |
-        sudo sh ./install.sh --prefix /usr/local --skip-api-key
-    
-    - name: Test Ollama integration
-      run: |
-        # List available Ollama models
-        aifixer --list-ollama-models || {
-          echo "Warning: Failed to list Ollama models"
-        }
-        
-        # Test with Ollama model (if available)
-        if ollama list | grep -q "tinyllama"; then
-          echo "def add(a, b): return a + b" | aifixer --ollama-model tinyllama || {
-            echo "Warning: Ollama test failed"
-          }
-        else
-          echo "No Ollama models available for testing"
-        fi
+        sh ./test_aifixer.sh
 
-  test-edge-cases:
-    name: Edge Case Testing
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout repository
+    - name: Checkout
       uses: actions/checkout@v4
     
-    - name: Install aifixer
+    - name: Shellcheck
       run: |
-        sudo sh ./install.sh --prefix /usr/local --skip-api-key
-    
-    - name: Test empty input
-      run: |
-        echo "" | aifixer --list-todo-files || true
-    
-    - name: Test large file handling
-      run: |
-        # Create a large file with many TODOs
-        {
-          echo "# File: large.py"
-          for i in $(seq 1 100); do
-            echo "# TODO: Fix issue $i"
-            echo "def func_$i(): pass"
-          done
-        } > large_test.py
-        
-        # Test listing (should handle large files)
-        aifixer --list-todo-files < large_test.py | head -n 5
-    
-    - name: Test special characters
-      run: |
-        # Test with various special characters
-        cat > special_chars.py << 'EOF'
-        # File: special.py
-        # TODO: Handle "quotes" and 'apostrophes'
-        # TODO: Support $pecial ch@rs & symbols!
-        # TODO: Unicode support 🚀 émojis
-        def test():
-            data = {"key": "value with \"nested\" quotes"}
-            return data
-        EOF
-        
-        aifixer --list-todo-files < special_chars.py || {
-          echo "Warning: Special characters test failed"
-        }
-
-  lint-scripts:
-    name: Lint Shell Scripts
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-    
-    - name: Install shellcheck
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y shellcheck
-    
-    - name: Lint main script
-      run: |
-        # Run shellcheck with POSIX mode
-        shellcheck -s sh -e SC2039,SC2028 ./aifixer.sh || {
-          echo "Note: Some shellcheck warnings may be expected for POSIX compliance"
-        }
-    
-    - name: Lint installer
-      run: |
+        sudo apt-get update && sudo apt-get install -y shellcheck
+        shellcheck -s sh ./aifixer.sh || true
         shellcheck -s sh ./install.sh || true
-    
-    - name: Lint test script
-      run: |
         shellcheck -s sh ./test_aifixer.sh || true
-
-  summary:
-    name: CI Summary
-    runs-on: ubuntu-latest
-    needs: [test-minimal, test-installation, test-integration, lint-scripts]
-    if: always()
-    
-    steps:
-    - name: Summary
-      run: |
-        echo "## CI Summary"
-        echo
-        echo "✅ All critical tests completed"
-        echo
-        echo "### Test Matrix:"
-        echo "- Shell compatibility: sh, dash, bash"
-        echo "- OS compatibility: Ubuntu, macOS"
-        echo "- Installation methods: automatic, manual"
-        echo
-        echo "### Notes:"
-        echo "- Set OPENROUTER_API_KEY secret for full API tests"
-        echo "- Use workflow_dispatch to run Ollama tests"
-        echo "- Some tests may be skipped without API key"

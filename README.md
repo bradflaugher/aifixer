@@ -150,7 +150,7 @@ cat monolithic_function.js | aifixer --prompt "Break this into smaller, testable
 aifixer --list-models
 
 # Use a specific model
-aifixer --model anthropic/claude-3-haiku-20240307 < code.py > fixed.py
+aifixer --model anthropic/claude-4-opus < code.py > fixed.py
 ```
 
 **Local AI with Ollama:**
