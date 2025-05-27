@@ -723,8 +723,13 @@ main() {
     elif [ ! -t 0 ]; then
         input_text=$(cat)
     else
-        show_help
-        exit 0
+        # If no input but prompt was provided, use empty input
+        if [ "$PROMPT" != "Fix the TODOs in the file below and output the full file: " ]; then
+            input_text=""
+        else
+            show_help
+            exit 0
+        fi
     fi
     
     # List TODO files if requested
