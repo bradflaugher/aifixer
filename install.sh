@@ -181,16 +181,33 @@ persist_api_key() {
 }
 
 configure_api_key() {
-  # If skipping, or already set & not forced, exit early
+  # If explicitly skipping and no key provided, exit early
   [ $ASK_API_KEY -eq 0 ] && [ -z "$API_KEY" ] && return
 
-  if [ -z "$API_KEY" ]; then
-    printf "Would you like to set your OpenRouter API key now? (y/N): "
+  # Check if API key is already set in environment
+  if [ -n "$OPENROUTER_API_KEY" ] && [ -z "$API_KEY" ]; then
+    log "OPENROUTER_API_KEY is already set in your environment."
+    printf "Would you like to overwrite it? (y/N): "
     read resp
     case "$resp" in
       [Yy]*) ;;
-      *) return ;;
+      *) 
+        log "Keeping existing API key."
+        return 
+        ;;
     esac
+  fi
+
+  if [ -z "$API_KEY" ]; then
+    # If we reach here from the overwrite path, skip the initial prompt
+    if [ -z "$OPENROUTER_API_KEY" ]; then
+      printf "Would you like to set your OpenRouter API key now? (y/N): "
+      read resp
+      case "$resp" in
+        [Yy]*) ;;
+        *) return ;;
+      esac
+    fi
     
     # POSIX sh doesn't support read -s, so we use stty
     printf "Enter API key (input hidden): "
