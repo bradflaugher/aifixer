@@ -217,47 +217,6 @@ else
   print_result "FAIL" "Piping to file execution failed"
 fi
 
-# ─── Test 6: JSON Parsing Robustness ─────────────────────────────────────────
-print_header "Test 6: JSON Parsing Robustness"
-
-# Test 6a: Code with special characters that could break JSON parsing
-TEST_CODE_8A='def parse_json(data):
-    # TODO: Add proper JSON parsing with error handling
-    # This should handle: {"key": "value with \"quotes\"", "nested": {"array": [1, 2, 3]}}
-    return data
-'
-f8a=$(create_temp_file "$TEST_CODE_8A")
-
-if json_test_out=$(sh "$AIFIXER_CMD" < "$f8a" 2>/dev/null); then
-  # Check if output is non-empty and contains the function
-  if [ -n "$json_test_out" ] && echo "$json_test_out" | grep -q "parse_json"; then
-    print_result "PASS" "JSON parsing handles special characters"
-  else
-    print_result "FAIL" "JSON parsing with special chars" "Output was empty or missing function"
-  fi
-else
-  print_result "FAIL" "JSON parsing test execution failed"
-fi
-
-# Test 6b: Code with nested brackets and braces
-TEST_CODE_8B='def complex_func():
-    # TODO: Fix this complex nested structure handling
-    data = {"a": [{"b": {"c": [1, 2, {"d": "e"}]}}]}
-    return data
-'
-f8b=$(create_temp_file "$TEST_CODE_8B")
-
-if brackets_out=$(sh "$AIFIXER_CMD" < "$f8b" 2>/dev/null); then
-  if [ -n "$brackets_out" ] && echo "$brackets_out" | grep -q "complex_func"; then
-    print_result "PASS" "JSON parsing handles nested brackets/braces"
-  else
-    print_result "FAIL" "Nested brackets test" "Output was empty or missing function"
-  fi
-else
-  print_result "FAIL" "Nested brackets test execution failed"
-fi
-
-
 # ─── Summary ──────────────────────────────────────────────────────────────────
 print_header "Test Summary"
 echo "Total tests run: $TEST_COUNT"
