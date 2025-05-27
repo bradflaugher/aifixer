@@ -76,7 +76,7 @@ cat broken_code.py | aifixer > fixed_code.py
 > See the examples below for input and output demonstrations.
 
 <details>
-<summary><code>broken_code.py</code></summary>
+<summary>example <code>broken_code.py</code> (click to expand)</summary>
 
 ```python
 def process_user_data(user_id):
@@ -91,7 +91,7 @@ def process_user_data(user_id):
 </details>
 
 <details>
-<summary><code>fixed_code.py</code></summary>
+<summary>example <code>fixed_code.py</code> (click to expand)</summary>
 
 ```python
 import logging
