@@ -43,7 +43,7 @@ export OPENROUTER_API_KEY="your-key-here"
 </details>
 
 
-## 📚 Fixing a file quickly
+## 📚 Give aifixer a file to fix 
 
 ```sh
 # Fix a file
