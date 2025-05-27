@@ -42,8 +42,14 @@ export OPENROUTER_API_KEY="your-key-here"
 
 </details>
 
+## ✨ Let AI write a new file from scratch
 
-## 📚 Give aifixer a file to fix 
+```sh
+# Fix a file
+aifixer "write me an interactive bash script to harden my ubuntu install" > hadening_script.sh
+```
+
+## 📚 Give aifixer an existing file to fix 
 
 ```sh
 # Fix a file
@@ -112,9 +118,7 @@ AIFixer is a command-line tool that uses AI to automatically fix, improve, and c
 - **🔌 Flexible**: Supports multiple AI providers (OpenRouter, Ollama for local models)
 - **🐧 Unix philosophy**: Designed to work with pipes, scripts, and existing workflows
 
-## 💻 Usage
-
-### 🎯 Common Use Cases
+## 🎯 Common Use Cases
 
 <details>
 <summary><strong>🛡️ Adding Error Handling</strong></summary>
