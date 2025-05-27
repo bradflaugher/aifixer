@@ -213,9 +213,9 @@ This simple design makes it easy to integrate into existing workflows, CI/CD pip
 > NOTE: See a full list of supported models at [openrouter.ai/models](https://openrouter.ai/models?order=top-weekly)
 
 With AIFixer, you can choose the right model for each task:
-- **🚀 Complex refactoring?** → Use Claude 4 Opus or GPT-4o for the best results
-- **⚡ Quick fixes?** → Use faster models like Mistral Nemo or a distilled Deepseek model from OpenRouter
+- **🚀 Complex refactoring?** → Use the latest frontier models as soon as they're released
+- **⚡ Quick fixes?** → Use distilled, optimized and quantized models if you like
 - **💰 Budget conscious?** → Mix and match models based on task complexity
-- **🔒 Privacy concerns?** → Use local models via Ollama
+- **🔒 Privacy concerns?** → Use local models via Ollama, or an open source model from OpenRouter
 
 Other tools often lock you into using their default model (sometimes a lighter version to save costs), but AIFixer lets you leverage the full power of frontier models when you need it most.
