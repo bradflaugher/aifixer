@@ -16,13 +16,11 @@ die() { printf '%s\n' "❌  $*" >&2; exit 1; }
 
 # ------------------------------ cli flags -------------------------
 PREFIX="${PREFIX:-}"
-SKIP_DEPS=0
 ASK_API_KEY=1
 API_KEY=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --prefix|-p) PREFIX="$2"; shift 2 ;;
-    --skip-deps) SKIP_DEPS=1; shift   ;;
     --api-key|-k) API_KEY="$2"; ASK_API_KEY=0; shift 2 ;;
     --skip-api-key) ASK_API_KEY=0; shift ;;
     -h|--help)
@@ -30,7 +28,6 @@ cat <<EOF
 Usage: ./install.sh [options]
 
   --prefix, -p DIR       Install aifixer into DIR/bin (default: autodetect).
-  --skip-deps            Do not install missing dependencies; just warn.
   --api-key, -k KEY      Persist KEY as OPENROUTER_API_KEY non-interactively.
   --skip-api-key         Do not prompt to set an API key.
   --help                 Show this help and exit.
@@ -43,64 +40,35 @@ done
 # ------------------------------ utils -----------------------------
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
-detect_pkg_manager() {
-  for pm in apt-get dnf yum pacman zypper apk brew; do
-    if command_exists "$pm"; then
-      echo "$pm"
-      return
+check_deps() {
+  # Check for curl if we need to download
+  script_dir=$(dirname "$0")
+  if [ ! -f "$script_dir/$AIFIXER_SCRIPT" ]; then
+    if ! command_exists curl; then
+      die "curl is required to download aifixer but not found. Please install curl first."
     fi
-  done
-  echo ""   # none detected
-}
-
-install_pkgs() {
-  pm=$1; shift
-  pkgs="$*"
-  [ -z "$pm" ] || [ -z "$pkgs" ] && return
-
-  log "Installing missing tools: $pkgs (via $pm)"
-  case "$pm" in
-    apt-get) sudo apt-get update -y && sudo apt-get install -y $pkgs ;;
-    dnf)     sudo dnf install -y $pkgs ;;
-    yum)     sudo yum install -y $pkgs ;;
-    pacman)  sudo pacman -Sy --noconfirm $pkgs ;;
-    zypper)  sudo zypper install -y $pkgs ;;
-    apk)     sudo apk add --no-cache $pkgs ;;
-    brew)    brew install $pkgs ;;
-    *)       die "Package-manager '$pm' unsupported for auto-install." ;;
-  esac
-}
-
-ensure_deps() {
-  required="bash curl awk grep sed"
+  fi
+  
+  # Just warn about other tools that aifixer might need
+  log "Checking for tools that aifixer may require..."
   missing=""
-  for bin in $required; do
+  for bin in awk grep sed; do
     if ! command_exists "$bin"; then
       missing="$missing $bin"
     fi
   done
-
-  # BusyBox/mawk detection – pulls in gawk if awk lacks common funcs
-  if command_exists awk && ! awk 'BEGIN{exit ARGC<0}' 2>/dev/null; then
-    missing="$missing gawk"
+  
+  if [ -n "$missing" ]; then
+    log "⚠️  Warning: The following tools may be needed by aifixer but are not installed:$missing"
+    log "   You may need to install them manually if aifixer doesn't work properly."
+  else
+    log "All recommended tools are present. ✅"
   fi
-
-  # Trim leading space
-  missing=$(echo "$missing" | sed 's/^ //')
-
-  [ -z "$missing" ] && { log "All dependencies present. ✅"; return; }
-
-  [ $SKIP_DEPS -eq 1 ] && die "Missing dependencies: $missing"
-
-  pm=$(detect_pkg_manager)
-  [ -z "$pm" ] && die "No supported package-manager; install: $missing"
-
-  install_pkgs "$pm" $missing
 }
 
 pick_install_dir() {
   if [ -n "$PREFIX" ]; then
-    echo "$PREFIX/bin" # <--- MODIFIED: Always use /bin within PREFIX
+    echo "$PREFIX/bin"
     return
   fi
   system_dir="/usr/local/bin"
@@ -119,6 +87,7 @@ install_aifixer() {
   script_dir=$(dirname "$0")
   if [ -f "$script_dir/$AIFIXER_SCRIPT" ]; then
     source_path="$script_dir/$AIFIXER_SCRIPT"
+    log "Installing local $AIFIXER_SCRIPT..."
   else
     # If not local, download to a temp location first, then install
     temp_script=$(mktemp 2>/dev/null || mktemp -t 'aifixer_download')
@@ -128,7 +97,9 @@ install_aifixer() {
       || die "Download failed."
   fi
 
-  install -m 0755 "$source_path" "$target_dir/$INSTALL_NAME"
+  # Use cp and chmod for maximum portability (install command may not exist)
+  cp "$source_path" "$target_dir/$INSTALL_NAME"
+  chmod 755 "$target_dir/$INSTALL_NAME"
   log "Installed $INSTALL_NAME → $target_dir/$INSTALL_NAME"
 
   # Clean up temp file if we downloaded
@@ -252,7 +223,7 @@ configure_api_key() {
 }
 
 main() {
-  ensure_deps
+  check_deps
   dir=$(pick_install_dir)
   install_aifixer "$dir"
   ensure_path "$dir"
