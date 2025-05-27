@@ -210,7 +210,7 @@ This simple design makes it easy to integrate into existing workflows, CI/CD pip
 
 ### Why Model Choice Matters
 
-> NOTE: See a full list of supported models at [openrouter.com/models](https://openrouter.ai/models?order=top-weekly)
+> NOTE: See a full list of supported models at [openrouter.ai/models](https://openrouter.ai/models?order=top-weekly)
 
 With AIFixer, you can choose the right model for each task:
 - **🚀 Complex refactoring?** → Use Claude 4 Opus or GPT-4o for the best results
