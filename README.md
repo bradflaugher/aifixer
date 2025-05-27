@@ -180,4 +180,4 @@ This simple design makes it easy to integrate into existing workflows, CI/CD pip
 | **📦 Dependencies** | ✨ None (shell script) ✅ | 📦 Node.js | 🐍 Python | 💻 IDE |
 | **🌐 Offline Support** | 🏠 Yes (via Ollama) ✅ | ☁️ No ❌ | ☁️ No ❌ | ☁️ No ❌ |
 | **💰 Price Model** | 💳 Pay-per-use (via OpenRouter) | 💳 Pay-per-use | 💳 Pay-per-use | 🔄 Subscription |
-| **🥔 System Requirements** | 🪶 Runs on a potato ✅ | 🖥️ Modern system | 🖥️ Modern system | 💪 Modern System |
+| **💾 System Requirements** | 🥔 Runs on a potato ✅ | 🖥️ Modern system | 🖥️ Modern system | 🖥️ Modern System |
