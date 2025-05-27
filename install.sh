@@ -28,9 +28,17 @@ cat <<EOF
 Usage: ./install.sh [options]
 
   --prefix, -p DIR       Install aifixer into DIR/bin (default: autodetect).
+                         On iOS/a-shell, defaults to ~/Documents/bin
   --api-key, -k KEY      Persist KEY as OPENROUTER_API_KEY non-interactively.
   --skip-api-key         Do not prompt to set an API key.
   --help                 Show this help and exit.
+  
+Examples:
+  # Install to default location
+  ./install.sh
+  
+  # Install to custom location (useful on iOS)
+  ./install.sh --prefix ~/Documents
 EOF
       exit 0 ;;
     *) die "Unknown flag: $1" ;;
@@ -71,17 +79,34 @@ pick_install_dir() {
     echo "$PREFIX/bin"
     return
   fi
+  
+  # Check if we're in a-shell on iOS
+  if [ -n "$ASHELL" ] || [ -f "$HOME/.shortcuts/README" ]; then
+    # a-shell detected - use ~/Documents/bin which is writable
+    echo "$HOME/Documents/bin"
+    return
+  fi
+  
+  # Try standard locations on other systems
   system_dir="/usr/local/bin"
   if [ -w "$system_dir" ]; then
     echo "$system_dir"
   else
-    echo "$HOME/.local/bin"
+    # First try to create ~/.local/bin to test if it's allowed
+    if mkdir -p "$HOME/.local/bin" 2>/dev/null; then
+      echo "$HOME/.local/bin"
+    else
+      # Fallback to ~/bin if ~/.local/bin fails
+      echo "$HOME/bin"
+    fi
   fi
 }
 
 install_aifixer() {
   target_dir=$1
-  mkdir -p "$target_dir"
+  if ! mkdir -p "$target_dir" 2>/dev/null; then
+    die "Cannot create directory $target_dir - permission denied. Try using --prefix to specify a writable location."
+  fi
 
   source_path=""
   script_dir=$(dirname "$0")
@@ -98,8 +123,10 @@ install_aifixer() {
   fi
 
   # Use cp and chmod for maximum portability (install command may not exist)
-  cp "$source_path" "$target_dir/$INSTALL_NAME"
-  chmod 755 "$target_dir/$INSTALL_NAME"
+  if ! cp "$source_path" "$target_dir/$INSTALL_NAME" 2>/dev/null; then
+    die "Cannot copy to $target_dir/$INSTALL_NAME - permission denied"
+  fi
+  chmod 755 "$target_dir/$INSTALL_NAME" 2>/dev/null || true
   log "Installed $INSTALL_NAME → $target_dir/$INSTALL_NAME"
 
   # Clean up temp file if we downloaded
@@ -117,26 +144,40 @@ ensure_path() {
   log "ℹ️  '$dir' not on PATH – adding for this session."
   PATH="$dir:$PATH"
   export PATH
-  printf '\n# Add to your shell profile for permanence:\nexport PATH="%s:$PATH"\n' "$dir"
+  
+  # Special handling for a-shell
+  if [ -n "$ASHELL" ] || [ -f "$HOME/.shortcuts/README" ]; then
+    printf '\n# For a-shell, add this to your .profile or .bashrc:\nexport PATH="%s:$PATH"\n' "$dir"
+    printf '# Or create a shortcut in a-shell with: jump aifixer\n'
+  else
+    printf '\n# Add to your shell profile for permanence:\nexport PATH="%s:$PATH"\n' "$dir"
+  fi
 }
 
 persist_api_key() {
   key=$1
   shell_name=$(basename "${SHELL:-sh}")
   
-  case "$shell_name" in
-    zsh)  conf_file="$HOME/.zshrc" ;;
-    fish) conf_file="$HOME/.config/fish/config.fish" ;;
-    *)    # bash/sh (Linux: .bashrc/.profile, macOS: prefer .bash_profile if present)
-          if [ "$(uname)" = "Darwin" ] && [ -f "$HOME/.bash_profile" ]; then
-            conf_file="$HOME/.bash_profile"
-          elif [ -f "$HOME/.bashrc" ]; then
-            conf_file="$HOME/.bashrc"
-          else
-            conf_file="$HOME/.profile"
-          fi ;;
-  esac
-  mkdir -p "$(dirname "$conf_file")"
+  # Check for a-shell first
+  if [ -n "$ASHELL" ] || [ -f "$HOME/.shortcuts/README" ]; then
+    # a-shell uses .profile
+    conf_file="$HOME/.profile"
+  else
+    case "$shell_name" in
+      zsh)  conf_file="$HOME/.zshrc" ;;
+      fish) conf_file="$HOME/.config/fish/config.fish" ;;
+      *)    # bash/sh (Linux: .bashrc/.profile, macOS: prefer .bash_profile if present)
+            if [ "$(uname)" = "Darwin" ] && [ -f "$HOME/.bash_profile" ]; then
+              conf_file="$HOME/.bash_profile"
+            elif [ -f "$HOME/.bashrc" ]; then
+              conf_file="$HOME/.bashrc"
+            else
+              conf_file="$HOME/.profile"
+            fi ;;
+    esac
+  fi
+  
+  mkdir -p "$(dirname "$conf_file")" 2>/dev/null || true
 
   if [ "$shell_name" = "fish" ]; then
     line="set -Ux OPENROUTER_API_KEY \"$key\""
@@ -223,6 +264,11 @@ configure_api_key() {
 }
 
 main() {
+  # Check if running in a-shell
+  if [ -n "$ASHELL" ] || [ -f "$HOME/.shortcuts/README" ]; then
+    log "a-shell detected - using iOS-compatible paths"
+  fi
+  
   check_deps
   dir=$(pick_install_dir)
   install_aifixer "$dir"
