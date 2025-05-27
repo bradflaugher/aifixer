@@ -17,7 +17,7 @@ FIX_FILE_ONLY=0
 FREE=0
 MAX_FALLBACKS=2
 SORT_BY="price"
-MIN_VALID_RESPONSE_LENGTH=10  # Minimum characters for a valid response
+MIN_VALID_RESPONSE_LENGTH=20  # Minimum characters for a valid response
 
 # Color codes for output (disabled if not in terminal)
 if [ -t 2 ]; then
@@ -173,6 +173,12 @@ is_valid_response() {
         return 1
     fi
     
+    # Check for responses that look like incomplete JSON or cut-off responses
+    if echo "$content" | grep -qE "^[[:space:]]*\{[^}]*$|^[[:space:]]*\[[^\]]*$"; then
+        log_debug "Response validation failed: appears to be incomplete JSON"
+        return 1
+    fi
+    
     if [ $length -lt $MIN_VALID_RESPONSE_LENGTH ]; then
         log_debug "Response validation failed: too short (${length} chars, minimum ${MIN_VALID_RESPONSE_LENGTH})"
         return 1
@@ -299,7 +305,19 @@ process_with_openrouter() {
     target_file="$6"
     
     # Test mode: return mock response for test API key
-    if [ "$api_key" = "test-key-12345" ]; then
+    if [ "$api_key" = "test-empty-response" ]; then
+        log_debug "Test mode: Simulating empty response"
+        # Simulate an API response with empty content
+        if [ "$model" = "google/gemini-2.0-flash-exp:free" ]; then
+            # First model returns empty
+            echo ""
+            return 0
+        else
+            # Fallback models return valid response
+            echo "Roses are red,\nViolets are blue,\nFallback worked,\nJust for you!"
+            return 0
+        fi
+    elif [ "$api_key" = "test-key-12345" ]; then
         log_debug "Test mode: Using mock response"
         
         # Generate appropriate mock response based on input
@@ -454,6 +472,16 @@ def parse_json(data):
             print content; 
         }
     ')
+    
+    log_debug "Raw API response (first 500 chars): $(echo "$response" | head -c 500)"
+    log_debug "Extracted content length: ${#content}"
+    log_debug "Extracted content (first 100 chars): $(echo "$content" | head -c 100)"
+    
+    # Additional debug for empty responses
+    if [ -z "$content" ] || [ "${#content}" -lt 5 ]; then
+        log_debug "Response appears to be empty or very short"
+        log_debug "Full response for debugging: $response"
+    fi
     
     # Validate response
     if ! is_valid_response "$content"; then
@@ -858,17 +886,27 @@ main() {
         if [ "$status" -eq 0 ] && is_valid_response "$result"; then
             log_debug "Primary model $current_model succeeded"
             success=1
-        elif [ -n "$fallback_models" ]; then
+        else
             # Primary model failed or returned invalid response
             if [ "$status" -ne 0 ]; then
-                log_warning "Primary model $current_model failed (exit code: $status) - Trying fallback models..."
+                log_warning "Primary model $current_model failed (exit code: $status)"
+                log_debug "Error output: $(echo "$result" | head -c 500)"
             else
-                log_warning "Primary model $current_model returned invalid/empty response - Trying fallback models..."
-                log_debug "Invalid response content: '$(echo "$result" | head -c 200)...'"
+                log_warning "Primary model $current_model returned invalid/empty response"
+                log_debug "Response length: ${#result} chars"
+                log_debug "Response content: '$(echo "$result" | head -c 200)...'"
+                # Check if response was too short
+                if [ "${#result}" -lt "$MIN_VALID_RESPONSE_LENGTH" ] && [ "${#result}" -gt 0 ]; then
+                    log_debug "Response was too short (${#result} chars < $MIN_VALID_RESPONSE_LENGTH minimum)"
+                fi
             fi
             
-            # Try fallback models (fixed: no subshell issue)
-            while IFS= read -r model; do
+            # Try fallback models if available
+            if [ -n "$fallback_models" ]; then
+                log_info "Trying fallback models..."
+                
+                # Try fallback models (fixed: no subshell issue)
+                while IFS= read -r model; do
                 [ -z "$model" ] && continue
                 current_model="$model"
                 log_info "Trying fallback model: $current_model"
@@ -894,14 +932,19 @@ main() {
                 else
                     if [ "$status" -ne 0 ]; then
                         log_warning "Fallback model $current_model failed (exit code: $status)"
+                        log_debug "Fallback error: $(echo "$result" | head -c 200)"
                     else
                         log_warning "Fallback model $current_model returned invalid/empty response"
+                        log_debug "Invalid fallback response length: ${#result} chars"
                         log_debug "Invalid fallback response: '$(echo "$result" | head -c 100)...'"
                     fi
+                    # Small delay before trying next model to avoid rate limits
+                    sleep 1
                 fi
             done <<EOF
 $fallback_models
 EOF
+            fi
         fi
     fi
     
