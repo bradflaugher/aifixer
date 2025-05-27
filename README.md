@@ -1,4 +1,6 @@
-# 🔧 AIFixer: POSIX-compliant terminal-based coding tool with OpenRouter and ollama support
+# 🔧 AIFixer
+
+POSIX-compliant terminal-based coding tool with OpenRouter and (optional) ollama support that can run anywhere.
 
 <p align="center">
   <img src="./logo.svg" alt="AIFixer" width="600">
@@ -13,7 +15,7 @@
 <p align="center">
   <strong>🤖 AI-powered code improvements directly in your terminal</strong>
   <br>
-  <em>Transform TODOs into working code • Fix bugs • Add error handling • Refactor with confidence</em>
+  <em>Explains complicated code • Generates useful scripts • Fixes your TODOs</em>
 </p>
 
 ---
@@ -42,7 +44,7 @@ export OPENROUTER_API_KEY="your-key-here"
 
 </details>
 
-## 🤯 Let AI explain a code to you 
+## 🤯 Let aifixer explain a code to you 
 
 ```sh
 # Help!
@@ -50,7 +52,7 @@ cat messy_script.sh | aifixer "please explain to me what this does"
 ```
 
 
-## ✨ Let AI write a new file from scratch
+## ✨ Let aifixer write generate a useful script
 
 ```sh
 # Generate code

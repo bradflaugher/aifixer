@@ -431,7 +431,7 @@ Examples:
   cat main.go | aifixer --ollama-model codellama > fixed.go
   
   # Custom prompt
-  cat complicated_program.c | aifixer --prompt "Please explain this code "
+  cat complicated_program.c | aifixer --prompt "Please explain this code"
 
 EOF
 }
