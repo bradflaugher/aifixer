@@ -1,4 +1,4 @@
-# 🔧 AIFixer
+# 🔧 AIFixer: POSIX-compliant terminal-based coding tool with OpenRouter and ollama support
 
 <p align="center">
   <img src="./logo.svg" alt="AIFixer" width="600">
