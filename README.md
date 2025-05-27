@@ -23,13 +23,60 @@
 ```sh
 # Fix a file
 cat broken_code.py | aifixer > fixed_code.py
-
-# Preview changes before applying
-diff -u original.js <(cat original.js | aifixer)
-
-# Get only the fixed code (no explanations)
-cat code.py | aifixer --fix-file-only > fixed.py
 ```
+<details>
+<summary>broken_code.py</summary>
+
+```python
+def process_user_data(user_id):
+    # TODO: Validate user_id format
+    # TODO: Add logging
+    # TODO: Handle database connection errors
+    
+    conn = get_db_connection()
+    return conn.query(f"SELECT * FROM users WHERE id = {user_id}")
+```
+
+</details>
+
+<details>
+<summary>fixed_code.py</summary>
+
+**Output:**
+```python
+import logging
+import re
+from contextlib import contextmanager
+
+logger = logging.getLogger(__name__)
+
+def process_user_data(user_id):
+    # Validate user_id format
+    if not isinstance(user_id, (int, str)):
+        raise ValueError("user_id must be an integer or string")
+    
+    if isinstance(user_id, str) and not re.match(r'^\d+$', user_id):
+        raise ValueError("user_id string must contain only digits")
+    
+    logger.info(f"Processing data for user_id: {user_id}")
+    
+    # Handle database connection errors
+    try:
+        with get_db_connection() as conn:
+            # Use parameterized query to prevent SQL injection
+            result = conn.query("SELECT * FROM users WHERE id = ?", (user_id,))
+            logger.debug(f"Retrieved {len(result)} rows for user_id: {user_id}")
+            return result
+    except DatabaseConnectionError as e:
+        logger.error(f"Database connection failed: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error processing user_id {user_id}: {e}")
+        raise
+```
+
+</details>
+
 
 <details>
 <summary><strong>📋 What is AIFixer?</strong></summary>
@@ -71,54 +118,6 @@ export OPENROUTER_API_KEY="your-key-here"
 ## 💻 Usage
 
 ### 🎯 Common Use Cases
-
-<details>
-<summary><strong>✅ Implementing TODOs</strong></summary>
-
-**Input:**
-```python
-def process_user_data(user_id):
-    # TODO: Validate user_id format
-    # TODO: Add logging
-    # TODO: Handle database connection errors
-    
-    conn = get_db_connection()
-    return conn.query(f"SELECT * FROM users WHERE id = {user_id}")
-```
-
-**Output:**
-```python
-import logging
-import re
-from contextlib import contextmanager
-
-logger = logging.getLogger(__name__)
-
-def process_user_data(user_id):
-    # Validate user_id format
-    if not isinstance(user_id, (int, str)):
-        raise ValueError("user_id must be an integer or string")
-    
-    if isinstance(user_id, str) and not re.match(r'^\d+$', user_id):
-        raise ValueError("user_id string must contain only digits")
-    
-    logger.info(f"Processing data for user_id: {user_id}")
-    
-    # Handle database connection errors
-    try:
-        with get_db_connection() as conn:
-            # Use parameterized query to prevent SQL injection
-            result = conn.query("SELECT * FROM users WHERE id = ?", (user_id,))
-            logger.debug(f"Retrieved {len(result)} rows for user_id: {user_id}")
-            return result
-    except DatabaseConnectionError as e:
-        logger.error(f"Database connection failed: {e}")
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error processing user_id {user_id}: {e}")
-        raise
-```
-</details>
 
 <details>
 <summary><strong>🛡️ Adding Error Handling</strong></summary>
@@ -175,6 +174,8 @@ AIFixer follows the Unix philosophy of doing one thing well:
 This simple design makes it easy to integrate into existing workflows, CI/CD pipelines, and shell scripts.
 
 </details>
+
+<details>
 
 ## 📊 Comparison with Alternatives
 
