@@ -18,7 +18,32 @@
 
 ---
 
-## 📚 Basic Examples
+## 📥 Installation
+
+Works on any Unix-like system (Linux, macOS, BSD) or Windows with WSL.
+
+### Quick Install
+
+```sh
+curl -sL https://raw.githubusercontent.com/bradflaugher/aifixer/main/install.sh | sh
+```
+
+<details>
+<summary><strong>Manual Install</strong></summary>
+
+```sh
+# Download the script
+wget https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.sh
+chmod +x aifixer.sh
+
+# Set your API key
+export OPENROUTER_API_KEY="your-key-here"
+```
+
+</details>
+
+
+## 📚 Fixing a file quickly
 
 ```sh
 # Fix a file
@@ -42,7 +67,6 @@ def process_user_data(user_id):
 <details>
 <summary><code>fixed_code.py</code></summary>
 
-**Output:**
 ```python
 import logging
 import re
@@ -87,30 +111,6 @@ AIFixer is a command-line tool that uses AI to automatically fix, improve, and c
 - **📦 No dependencies**: Works out of the box without package managers or runtime environments
 - **🔌 Flexible**: Supports multiple AI providers (OpenRouter, Ollama for local models)
 - **🐧 Unix philosophy**: Designed to work with pipes, scripts, and existing workflows
-
-## 📥 Installation
-
-Works on any Unix-like system (Linux, macOS, BSD) or Windows with WSL.
-
-### Quick Install
-
-```sh
-curl -sL https://raw.githubusercontent.com/bradflaugher/aifixer/main/install.sh | sh
-```
-
-<details>
-<summary><strong>Manual Install</strong></summary>
-
-```sh
-# Download the script
-wget https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.sh
-chmod +x aifixer.sh
-
-# Set your API key
-export OPENROUTER_API_KEY="your-key-here"
-```
-
-</details>
 
 ## 💻 Usage
 
