@@ -172,8 +172,6 @@ This simple design makes it easy to integrate into existing workflows, CI/CD pip
 
 </details>
 
-<details>
-
 ## 📊 Comparison with Alternatives
 
 | Feature | AIFixer | Claude Code | Aider | Cursor |
