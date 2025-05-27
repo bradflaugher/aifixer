@@ -25,7 +25,7 @@
 cat broken_code.py | aifixer > fixed_code.py
 ```
 <details>
-<summary>```broken_code.py```</summary>
+<summary><code>broken_code.py</code></summary>
 
 ```python
 def process_user_data(user_id):
@@ -40,7 +40,7 @@ def process_user_data(user_id):
 </details>
 
 <details>
-<summary>```fixed_code.py```</summary>
+<summary><code>fixed_code.py</code></summary>
 
 **Output:**
 ```python
@@ -78,8 +78,7 @@ def process_user_data(user_id):
 </details>
 
 
-<details>
-<summary><strong>📋 What is AIFixer?</strong></summary>
+## 📋 What is AIFixer?
 
 AIFixer is a command-line tool that uses AI to automatically fix, improve, and complete your code. It's designed as a simple Unix filter: pipe in code, get improved code out.
 
@@ -88,8 +87,6 @@ AIFixer is a command-line tool that uses AI to automatically fix, improve, and c
 - **📦 No dependencies**: Works out of the box without package managers or runtime environments
 - **🔌 Flexible**: Supports multiple AI providers (OpenRouter, Ollama for local models)
 - **🐧 Unix philosophy**: Designed to work with pipes, scripts, and existing workflows
-
-</details>
 
 ## 📥 Installation
 
