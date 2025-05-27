@@ -9,7 +9,7 @@ OLLAMA_URL="http://localhost:11434/api"
 REQUEST_TIMEOUT=60
 
 # Default values
-MODEL="anthropic/claude-3-sonnet-20240229"
+MODEL="anthropic/claude-sonnet-4"
 PROMPT="Fix the TODOs in the file below and output the full file: "
 VERBOSE=0
 DEBUG=0
@@ -158,34 +158,65 @@ fetch_openrouter_models() {
     
     log_info "Fetching OpenRouter models..."
     
-    response=$(curl -s -m $REQUEST_TIMEOUT "$OPENROUTER_URL/models" 2>/dev/null)
-    if [ $? -ne 0 ]; then
+    tmpfile="/tmp/aifixer_models_response_$$"
+    (
+        curl -s -m $REQUEST_TIMEOUT "$OPENROUTER_URL/models" > "$tmpfile" 2>/dev/null
+    ) &
+    pid=$!
+    spinner "Fetching models from OpenRouter..." $pid
+    
+    if [ ! -s "$tmpfile" ]; then
         log_error "Could not fetch OpenRouter models"
+        rm -f "$tmpfile"
         exit 1
     fi
     
     # For now, just return models in API order (curated by OpenRouter)
     # Free models typically have ":free" suffix or very low prices
     # High-quality models like Claude and GPT-4 are usually listed early
-    echo "$response" | grep -o '{"id":"[^"]*"' | sed 's/{"id":"//' | sed 's/"$//'
+    grep -o '{"id":"[^"]*"' "$tmpfile" | sed 's/{"id":"//' | sed 's/"$//'
+    rm -f "$tmpfile"
 }
 
 get_free_models() {
     sort_key=$1
     
-    response=$(curl -s -m $REQUEST_TIMEOUT "$OPENROUTER_URL/models" 2>/dev/null)
-    if [ $? -ne 0 ]; then
+    tmpfile="/tmp/aifixer_models_response_$$"
+    curl -s -m $REQUEST_TIMEOUT "$OPENROUTER_URL/models" > "$tmpfile" 2>/dev/null
+    
+    if [ ! -s "$tmpfile" ]; then
         log_error "Could not fetch OpenRouter models"
+        rm -f "$tmpfile"
         return 1
     fi
     
-    # Extract only free models (id contains ":free" or price is "0")
-    # First get all :free models
-    echo "$response" | grep -o '{"id":"[^"]*:free"' | sed 's/{"id":"//' | sed 's/"$//'
+    # Parse JSON to extract free models with context length
+    # Split by model entries and process each
+    tr '}' '\n' < "$tmpfile" | while IFS= read -r line; do
+        # Skip if no id field
+        echo "$line" | grep -q '"id":' || continue
+        
+        # Extract model ID
+        model_id=$(echo "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+        [ -z "$model_id" ] && continue
+        
+        # Extract context length (default to 0 if not found)
+        context_length=$(echo "$line" | sed -n 's/.*"context_length":\([0-9]*\).*/\1/p')
+        [ -z "$context_length" ] && context_length=0
+        
+        # Check if free model (has :free suffix)
+        if echo "$model_id" | grep -q ':free$'; then
+            printf "%012d %s\n" "$context_length" "$model_id"
+            continue
+        fi
+        
+        # Check if pricing shows free (prompt price is 0)
+        if echo "$line" | grep -q '"prompt":"0"'; then
+            printf "%012d %s\n" "$context_length" "$model_id"
+        fi
+    done | sort -nr | cut -d' ' -f2-
     
-    # Also check for models with 0 price (like some Google models)
-    # This is more complex without jq, so for now we'll add known free models
-    echo "$response" | grep -o '{"id":"google/gemini-flash-1.5"' | sed 's/{"id":"//' | sed 's/"$//' || true
+    rm -f "$tmpfile"
 }
 
 fetch_ollama_models() {
@@ -712,10 +743,11 @@ main() {
     if [ $FREE -eq 1 ] && [ -z "$ollama_model" ]; then
         # Get free models
         tmpfile="/tmp/aifixer_free_models_$$"
-        get_free_models "$SORT_BY" > "$tmpfile" &
+        (
+            get_free_models "$SORT_BY" > "$tmpfile"
+        ) &
         pid=$!
         spinner "Selecting free/cheap models..." $pid
-        wait $pid
         free_models=$(cat "$tmpfile" 2>/dev/null)
         rm -f "$tmpfile"
         
@@ -801,8 +833,10 @@ main() {
                 
                 if [ "$status" -eq 0 ]; then
                     log_info "✓ Fallback model $current_model succeeded"
-                    echo "$result" > "/tmp/aifixer_final_result_$$"
-                    echo "1" > "/tmp/aifixer_success_$$"
+                    tmpfile_final_result="/tmp/aifixer_final_result_$$"
+                    tmpfile_success="/tmp/aifixer_success_$$"
+                    echo "$result" > "$tmpfile_final_result"
+                    echo "1" > "$tmpfile_success"
                     break
                 else
                     log_warning "Fallback model $current_model failed"
@@ -810,10 +844,12 @@ main() {
             done
             
             # Check if any fallback succeeded
-            if [ -f "/tmp/aifixer_success_$$" ]; then
+            tmpfile_final_result="/tmp/aifixer_final_result_$$"
+            tmpfile_success="/tmp/aifixer_success_$$"
+            if [ -f "$tmpfile_success" ]; then
                 success=1
-                result=$(cat "/tmp/aifixer_final_result_$$" 2>/dev/null)
-                rm -f "/tmp/aifixer_success_$$" "/tmp/aifixer_final_result_$$"
+                result=$(cat "$tmpfile_final_result" 2>/dev/null)
+                rm -f "$tmpfile_success" "$tmpfile_final_result"
             fi
         fi
     fi
