@@ -196,7 +196,7 @@ Examples:
   cat main.go | aifixer -o codellama > fixed.go
   
   # Custom prompt
-  echo "What is 2+2?" | aifixer -p "Answer: "
+  aifixer --prompt "write me an interactive bash script to harden my ubuntu install" > hadening_script.sh
 EOF
 }
 
