@@ -1,9 +1,9 @@
 #!/bin/sh
-# aifixer.sh — Simplified terminal AI coding assistant (POSIX compliant)
+# aifixer.sh — Terminal AI coding assistant (requires jq & curl)
 
 set -eu
 
-VERSION="2.1.0"
+VERSION="3.0.0"
 OPENROUTER_URL="https://openrouter.ai/api/v1"
 OLLAMA_URL="http://localhost:11434/api"
 REQUEST_TIMEOUT=60
@@ -12,49 +12,53 @@ REQUEST_TIMEOUT=60
 MODEL="${AIFIXER_MODEL:-anthropic/claude-3.5-sonnet}"
 PROMPT="Fix the TODOs in the file below and output the full file: "
 
-# Simple temp file handling
-TMPDIR="${TMPDIR:-/tmp}"
-TEMP_FILE="${TMPDIR}/aifixer_$$_response"
-
-# Cleanup on exit
-trap 'rm -f "$TEMP_FILE"' EXIT INT TERM
-
 # ─── Core Functions ───────────────────────────────────────────────────────────
 
 log_error() {
     printf "ERROR: %s\n" "$*" >&2
 }
 
-# Simplified JSON string escaping
-escape_json() {
-    printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/	/\\t/g' | awk '{printf "%s\\n", $0}' | sed '$ s/\\n$//'
+# Build JSON payload
+build_payload() {
+    model="$1"
+    content="$2"
+    
+    jq -n \
+        --arg model "$model" \
+        --arg content "$content" \
+        '{
+            model: $model,
+            messages: [{role: "user", content: $content}],
+            temperature: 0.7
+        }' | jq -c .
 }
 
-# Extract content from API response
-extract_content() {
-    # Simple extraction that handles both OpenRouter and Ollama responses
-    sed -n 's/.*"content"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 | \
-    sed -e 's/\\n/\
-/g' -e 's/\\t/	/g' -e 's/\\"/"/g' -e 's/\\\\/\\/g'
+# Build Ollama payload
+build_ollama_payload() {
+    model="$1"
+    content="$2"
+    
+    jq -n \
+        --arg model "$model" \
+        --arg content "$content" \
+        '{
+            model: $model,
+            messages: [{role: "user", content: $content}],
+            stream: false
+        }' | jq -c .
 }
 
-# Simple spinner for long operations
+# Simple progress indicator
 show_progress() {
-    message="$1"
-    pid="$2"
-    
-    # Skip spinner if not interactive
-    if [ ! -t 2 ]; then
-        wait "$pid"
-        return
+    if [ -t 2 ]; then
+        printf "Processing with %s..." "$1" >&2
     fi
-    
-    printf "%s" "$message" >&2
-    while kill -0 "$pid" 2>/dev/null; do
-        printf "." >&2
-        sleep 1
-    done
-    printf " done\n" >&2
+}
+
+show_done() {
+    if [ -t 2 ]; then
+        printf " done\n" >&2
+    fi
 }
 
 # ─── API Functions ────────────────────────────────────────────────────────────
@@ -64,27 +68,43 @@ call_openrouter() {
     model="$2"
     content="$3"
     
-    payload=$(printf '{"model":"%s","messages":[{"role":"user","content":"%s"}],"temperature":0.7}' \
-        "$model" "$(escape_json "$content")")
+    payload=$(build_payload "$model" "$content")
     
-    curl -s -m "$REQUEST_TIMEOUT" \
+    curl -s -S -m "$REQUEST_TIMEOUT" \
         -H "Authorization: Bearer $api_key" \
         -H "Content-Type: application/json" \
         -d "$payload" \
-        "$OPENROUTER_URL/chat/completions" 2>/dev/null
+        "$OPENROUTER_URL/chat/completions"
 }
 
 call_ollama() {
     model="$1"
     content="$2"
     
-    payload=$(printf '{"model":"%s","messages":[{"role":"user","content":"%s"}],"stream":false}' \
-        "$model" "$(escape_json "$content")")
+    payload=$(build_ollama_payload "$model" "$content")
     
-    curl -s -m "$REQUEST_TIMEOUT" \
+    curl -s -S -m "$REQUEST_TIMEOUT" \
         -H "Content-Type: application/json" \
         -d "$payload" \
-        "$OLLAMA_URL/chat" 2>/dev/null
+        "$OLLAMA_URL/chat"
+}
+
+# Extract content from response
+extract_content() {
+    provider="$1"
+    response="$2"
+    
+    if [ "$provider" = "ollama" ]; then
+        echo "$response" | jq -r '.message.content // empty'
+    else
+        echo "$response" | jq -r '.choices[0].message.content // empty'
+    fi
+}
+
+# Check for API error
+check_error() {
+    response="$1"
+    echo "$response" | jq -r '.error.message // .error // empty'
 }
 
 # ─── Model Listing ────────────────────────────────────────────────────────────
@@ -93,21 +113,11 @@ list_models() {
     provider="$1"
     
     if [ "$provider" = "openrouter" ]; then
-        response=$(curl -s -m "$REQUEST_TIMEOUT" "$OPENROUTER_URL/models" 2>/dev/null)
-        if [ -n "$response" ]; then
-            echo "$response" | grep -o '"id":"[^"]*"' | sed 's/"id":"//' | sed 's/"$//'
-        else
-            log_error "Failed to fetch OpenRouter models"
-            return 1
-        fi
-    elif [ "$provider" = "ollama" ]; then
-        response=$(curl -s -m "$REQUEST_TIMEOUT" "$OLLAMA_URL/tags" 2>/dev/null)
-        if [ -n "$response" ]; then
-            echo "$response" | grep -o '"name":"[^"]*"' | sed 's/"name":"//' | sed 's/"$//'
-        else
-            log_error "Failed to fetch Ollama models (is Ollama running?)"
-            return 1
-        fi
+        curl -s -m "$REQUEST_TIMEOUT" "$OPENROUTER_URL/models" | \
+            jq -r '.data[].id'
+    else
+        curl -s -m "$REQUEST_TIMEOUT" "$OLLAMA_URL/tags" | \
+            jq -r '.models[].name'
     fi
 }
 
@@ -123,39 +133,38 @@ process_input() {
     # Combine prompt and input
     full_content="$prompt$input_text"
     
-    # Make API call in background
+    show_progress "$model"
+    
+    # Make API call
     if [ "$provider" = "ollama" ]; then
-        (call_ollama "$model" "$full_content" > "$TEMP_FILE" 2>&1) &
+        response=$(call_ollama "$model" "$full_content")
     else
-        (call_openrouter "$api_key" "$model" "$full_content" > "$TEMP_FILE" 2>&1) &
+        response=$(call_openrouter "$api_key" "$model" "$full_content")
     fi
     
-    pid=$!
-    show_progress "Processing with $model" "$pid"
-    wait "$pid"
-    status=$?
+    show_done
     
-    if [ $status -ne 0 ] || [ ! -s "$TEMP_FILE" ]; then
-        log_error "API call failed"
-        return 1
-    fi
-    
-    # Check for API errors
-    if grep -q '"error"' "$TEMP_FILE"; then
-        error_msg=$(grep -o '"message":"[^"]*"' "$TEMP_FILE" | sed 's/"message":"//' | sed 's/"$//')
-        log_error "API error: ${error_msg:-Unknown error}"
-        return 1
-    fi
-    
-    # Extract and output content
-    content=$(cat "$TEMP_FILE" | extract_content)
-    
-    if [ -z "$content" ]; then
+    # Check for errors
+    if [ -z "$response" ]; then
         log_error "Empty response from API"
         return 1
     fi
     
-    echo "$content"
+    error=$(check_error "$response")
+    if [ -n "$error" ]; then
+        log_error "API error: $error"
+        return 1
+    fi
+    
+    # Extract and output content
+    content=$(extract_content "$provider" "$response")
+    
+    if [ -z "$content" ]; then
+        log_error "No content in response"
+        return 1
+    fi
+    
+    printf '%s\n' "$content"
 }
 
 # ─── Help Functions ───────────────────────────────────────────────────────────
