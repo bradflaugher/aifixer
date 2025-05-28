@@ -1,302 +1,427 @@
 #!/bin/sh
-# ------------------------------------------------------------------
-#  AIFixer install script (POSIX sh version)
-#  Installs the `aifixer` command and (optionally) sets OPENROUTER_API_KEY
-# ------------------------------------------------------------------
+# AIFixer installer - Simple, robust installation for all platforms
+# 
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/bradflaugher/aifixer/main/install.sh | sh
+#   wget -qO- https://raw.githubusercontent.com/bradflaugher/aifixer/main/install.sh | sh
+#
+# Or download and run:
+#   ./install.sh [options]
+
 set -e
 
-# ------------------------------ constants -------------------------
-REPO_RAW_URL="https://raw.githubusercontent.com/bradflaugher/aifixer/main"
-AIFIXER_SCRIPT="aifixer.sh"
-INSTALL_NAME="aifixer"
+# ─── Configuration ────────────────────────────────────────────────────────────
 
-# ------------------------------ logging helpers ------------------
-log() { printf '%s\n' "👉  $*"; }
-die() { printf '%s\n' "❌  $*" >&2; exit 1; }
+AIFIXER_VERSION="2.1.0"
+GITHUB_REPO="bradflaugher/aifixer"
+SCRIPT_NAME="aifixer.sh"
+COMMAND_NAME="aifixer"
 
-# ------------------------------ cli flags -------------------------
-PREFIX="${PREFIX:-}"
-ASK_API_KEY=1
-API_KEY=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --prefix|-p) PREFIX="$2"; shift 2 ;;
-    --api-key|-k) API_KEY="$2"; ASK_API_KEY=0; shift 2 ;;
-    --skip-api-key) ASK_API_KEY=0; shift ;;
-    -h|--help)
-cat <<EOF
-Usage: ./install.sh [options]
+# ─── Colors & Output ──────────────────────────────────────────────────────────
 
-  --prefix, -p DIR       Install aifixer into DIR/bin (default: autodetect).
-  --api-key, -k KEY      Persist KEY as OPENROUTER_API_KEY non-interactively.
-  --skip-api-key         Do not prompt to set an API key.
-  --help                 Show this help and exit.
-  
-The script will try these locations in order:
-  /usr/local/bin      (if writable)
-  ~/.local/bin        (XDG standard)
-  ~/bin               (traditional)
-  ~/Documents/bin     (fallback for restricted systems)
-  
-Examples:
-  # Install to default location
-  ./install.sh
-  
-  # Install to custom location
-  ./install.sh --prefix ~/my-tools
-EOF
-      exit 0 ;;
-    *) die "Unknown flag: $1" ;;
-  esac
-done
+# Detect color support
+if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
+    RED=$(tput setaf 1 2>/dev/null || echo '')
+    GREEN=$(tput setaf 2 2>/dev/null || echo '')
+    YELLOW=$(tput setaf 3 2>/dev/null || echo '')
+    BLUE=$(tput setaf 4 2>/dev/null || echo '')
+    BOLD=$(tput bold 2>/dev/null || echo '')
+    RESET=$(tput sgr0 2>/dev/null || echo '')
+else
+    RED='' GREEN='' YELLOW='' BLUE='' BOLD='' RESET=''
+fi
 
-# ------------------------------ utils -----------------------------
-command_exists() { command -v "$1" >/dev/null 2>&1; }
+# Output helpers
+info() { printf "${BLUE}==>${RESET} %s\n" "$*"; }
+success() { printf "${GREEN}✓${RESET} %s\n" "$*"; }
+warn() { printf "${YELLOW}⚠${RESET}  %s\n" "$*" >&2; }
+error() { printf "${RED}✗${RESET} %s\n" "$*" >&2; }
+die() { error "$*"; exit 1; }
 
-check_deps() {
-  # Check for curl if we need to download
-  script_dir=$(dirname "$0")
-  if [ ! -f "$script_dir/$AIFIXER_SCRIPT" ]; then
-    if ! command_exists curl; then
-      die "curl is required to download aifixer but not found. Please install curl first."
-    fi
-  fi
-  
-  # Just warn about other tools that aifixer might need
-  log "Checking for tools that aifixer may require..."
-  missing=""
-  for bin in awk grep sed; do
-    if ! command_exists "$bin"; then
-      missing="$missing $bin"
-    fi
-  done
-  
-  if [ -n "$missing" ]; then
-    log "⚠️  Warning: The following tools may be needed by aifixer but are not installed:$missing"
-    log "   You may need to install them manually if aifixer doesn't work properly."
-  else
-    log "All recommended tools are present. ✅"
-  fi
+# ─── System Detection ─────────────────────────────────────────────────────────
+
+detect_os() {
+    case "$(uname -s)" in
+        Darwin*) echo "macos" ;;
+        Linux*) echo "linux" ;;
+        MINGW*|MSYS*|CYGWIN*) echo "windows" ;;
+        *) echo "unknown" ;;
+    esac
 }
 
-pick_install_dir() {
-  if [ -n "$PREFIX" ]; then
-    echo "$PREFIX/bin"
-    return
-  fi
-  
-  # Try directories in order of preference, testing if we can actually create them
-  for dir in "/usr/local/bin" "$HOME/.local/bin" "$HOME/bin" "$HOME/Documents/bin"; do
-    if [ -d "$dir" ] && [ -w "$dir" ]; then
-      # Directory exists and is writable
-      echo "$dir"
-      return
-    elif [ ! -e "$dir" ]; then
-      # Directory doesn't exist, try to create it
-      if mkdir -p "$dir" 2>/dev/null; then
-        echo "$dir"
+detect_shell() {
+    # First check SHELL env var
+    if [ -n "${SHELL-}" ]; then
+        case "$SHELL" in
+            */bash) echo "bash" ;;
+            */zsh) echo "zsh" ;;
+            */fish) echo "fish" ;;
+            */sh) echo "sh" ;;
+            *) echo "sh" ;;
+        esac
         return
-      fi
     fi
-  done
-  
-  # If nothing worked, suggest using --prefix
-  die "Cannot find a writable directory for installation. Please use --prefix to specify one."
+    
+    # Fallback to checking what's available
+    if command -v bash >/dev/null 2>&1; then echo "bash"
+    elif command -v zsh >/dev/null 2>&1; then echo "zsh"
+    else echo "sh"
+    fi
 }
+
+get_shell_config_file() {
+    shell="$1"
+    
+    case "$shell" in
+        bash)
+            # macOS uses .bash_profile, Linux uses .bashrc
+            if [ "$(detect_os)" = "macos" ]; then
+                echo "$HOME/.bash_profile"
+            else
+                echo "$HOME/.bashrc"
+            fi
+            ;;
+        zsh) echo "$HOME/.zshrc" ;;
+        fish) echo "$HOME/.config/fish/config.fish" ;;
+        *) echo "$HOME/.profile" ;;  # Universal fallback
+    esac
+}
+
+# ─── Installation Directory Selection ─────────────────────────────────────────
+
+get_install_dir() {
+    # Check if user specified a directory
+    if [ -n "${PREFIX-}" ]; then
+        echo "${PREFIX%/}/bin"
+        return
+    fi
+    
+    # Check for existing aifixer installation
+    if command -v "$COMMAND_NAME" >/dev/null 2>&1; then
+        existing_path=$(command -v "$COMMAND_NAME")
+        existing_dir=$(dirname "$existing_path")
+        
+        # If it's in a standard location and writable, use it
+        case "$existing_dir" in
+            /usr/local/bin|"$HOME/.local/bin"|"$HOME/bin")
+                if [ -w "$existing_dir" ]; then
+                    echo "$existing_dir"
+                    return
+                fi
+                ;;
+        esac
+    fi
+    
+    # Try standard locations in order
+    for dir in "$HOME/.local/bin" "$HOME/bin" "/usr/local/bin"; do
+        if [ -d "$dir" ] && [ -w "$dir" ]; then
+            echo "$dir"
+            return
+        elif [ "$dir" != "/usr/local/bin" ] && mkdir -p "$dir" 2>/dev/null; then
+            echo "$dir"
+            return
+        fi
+    done
+    
+    # Last resort
+    last_resort="$HOME/.aifixer/bin"
+    mkdir -p "$last_resort" 2>/dev/null || die "Cannot create installation directory"
+    echo "$last_resort"
+}
+
+# ─── Download Functions ───────────────────────────────────────────────────────
+
+download_file() {
+    url="$1"
+    output="$2"
+    
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$url" -o "$output" || return 1
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO "$output" "$url" || return 1
+    else
+        die "Neither curl nor wget found. Please install one of them."
+    fi
+}
+
+get_script_source() {
+    # Check if we're running from a local checkout
+    script_dir=$(dirname "$0")
+    local_script="$script_dir/$SCRIPT_NAME"
+    
+    if [ -f "$local_script" ] && [ -r "$local_script" ]; then
+        echo "local"
+        echo "$local_script"
+    else
+        echo "remote"
+        echo "https://raw.githubusercontent.com/$GITHUB_REPO/main/$SCRIPT_NAME"
+    fi
+}
+
+# ─── Installation ─────────────────────────────────────────────────────────────
 
 install_aifixer() {
-  target_dir=$1
-  
-  source_path=""
-  script_dir=$(dirname "$0")
-  if [ -f "$script_dir/$AIFIXER_SCRIPT" ]; then
-    source_path="$script_dir/$AIFIXER_SCRIPT"
-    log "Installing local $AIFIXER_SCRIPT..."
-  else
-    # If not local, download to a temp location first, then install
-    temp_script=$(mktemp 2>/dev/null || mktemp -t 'aifixer_download')
-    source_path="$temp_script"
-    log "Fetching latest $AIFIXER_SCRIPT from GitHub…"
-    curl -fsSL "$REPO_RAW_URL/$AIFIXER_SCRIPT" -o "$source_path" \
-      || die "Download failed."
-  fi
-
-  # Use cp and chmod for maximum portability (install command may not exist)
-  cp "$source_path" "$target_dir/$INSTALL_NAME" 2>/dev/null || \
-    die "Cannot copy to $target_dir/$INSTALL_NAME - check permissions or use --prefix"
-  
-  chmod 755 "$target_dir/$INSTALL_NAME" 2>/dev/null || true
-  log "Installed $INSTALL_NAME → $target_dir/$INSTALL_NAME"
-
-  # Clean up temp file if we downloaded
-  if [ -n "$temp_script" ] && [ -f "$temp_script" ]; then
-      rm "$temp_script"
-  fi
-}
-
-ensure_path() {
-  dir=$1
-  case ":$PATH:" in
-    *":$dir:"*) return ;;
-  esac
-
-  log "ℹ️  '$dir' not on PATH – adding for this session."
-  PATH="$dir:$PATH"
-  export PATH
-  
-  printf '\n# Add to your shell profile for permanence:\nexport PATH="%s:$PATH"\n' "$dir"
-}
-
-persist_api_key() {
-  key=$1
-  shell_name=$(basename "${SHELL:-sh}")
-  
-  # Determine the best config file based on what exists and what shell we're using
-  conf_file=""
-  
-  case "$shell_name" in
-    zsh)  
-      # zsh always uses .zshrc
-      conf_file="$HOME/.zshrc" 
-      ;;
-    fish) 
-      # fish has its own config location
-      conf_file="$HOME/.config/fish/config.fish" 
-      ;;
-    *)    
-      # For sh/bash/dash, use a smart detection approach
-      # .profile is the most universal - works with sh and bash in login mode
-      # Many restricted environments (like a-shell) only read .profile
-      
-      # First, check what files already exist
-      if [ -f "$HOME/.profile" ]; then
-        conf_file="$HOME/.profile"
-      elif [ -f "$HOME/.bashrc" ] && [ -f "$HOME/.bash_profile" ]; then
-        # If both exist, prefer .bashrc and ensure .bash_profile sources it
-        conf_file="$HOME/.bashrc"
-        # Make sure .bash_profile sources .bashrc
-        if ! grep -q "source.*bashrc\|\..*bashrc" "$HOME/.bash_profile" 2>/dev/null; then
-          printf '\n# Source .bashrc\n[ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"\n' >> "$HOME/.bash_profile"
-        fi
-      elif [ -f "$HOME/.bash_profile" ]; then
-        conf_file="$HOME/.bash_profile"
-      elif [ -f "$HOME/.bashrc" ]; then
-        conf_file="$HOME/.bashrc"
-      else
-        # No existing files - create .profile as it's most universal
-        conf_file="$HOME/.profile"
-      fi
-      ;;
-  esac
-  
-  # Try to create config directory if needed
-  conf_dir=$(dirname "$conf_file")
-  [ -d "$conf_dir" ] || mkdir -p "$conf_dir" 2>/dev/null || true
-
-  if [ "$shell_name" = "fish" ]; then
-    line="set -Ux OPENROUTER_API_KEY \"$key\""
-  else
-    line="export OPENROUTER_API_KEY=\"$key\""
-  fi
-
-  # Append only if not already present
-  if [ -w "$conf_file" ] || [ ! -e "$conf_file" ]; then
-    if ! grep -qxF "$line" "$conf_file" 2>/dev/null; then
-      printf '\n%s\n' "$line" >> "$conf_file" 2>/dev/null || {
-        log "Warning: Could not persist API key to $conf_file"
-        return
-      }
-    fi
-    log "API key persisted to $conf_file"
+    install_dir="$1"
+    target_path="$install_dir/$COMMAND_NAME"
     
-    # Special note for Terminal.app users on macOS
-    if [ "$(uname)" = "Darwin" ] && [ "$conf_file" = "$HOME/.bashrc" ]; then
-      log "Note: Terminal.app loads .bash_profile by default. Make sure it sources .bashrc"
+    # Get source
+    source_info=$(get_script_source)
+    source_type=$(echo "$source_info" | head -1)
+    source_path=$(echo "$source_info" | tail -1)
+    
+    # Check if updating
+    is_update=0
+    if [ -f "$target_path" ]; then
+        is_update=1
+        info "Updating existing installation"
+    else
+        info "Installing $COMMAND_NAME to $install_dir"
     fi
-  else
-    log "Warning: Cannot write to $conf_file - API key set for this session only"
-  fi
+    
+    # Download or copy
+    if [ "$source_type" = "local" ]; then
+        cp "$source_path" "$target_path" || die "Failed to copy script"
+    else
+        info "Downloading latest version..."
+        temp_file=$(mktemp 2>/dev/null || mktemp -t 'aifixer')
+        if ! download_file "$source_path" "$temp_file"; then
+            rm -f "$temp_file"
+            die "Download failed"
+        fi
+        mv "$temp_file" "$target_path" || die "Failed to install script"
+    fi
+    
+    # Make executable
+    chmod +x "$target_path" || warn "Could not make script executable"
+    
+    if [ $is_update -eq 1 ]; then
+        success "Updated $COMMAND_NAME successfully"
+    else
+        success "Installed $COMMAND_NAME successfully"
+    fi
 }
+
+# ─── PATH Configuration ───────────────────────────────────────────────────────
+
+configure_path() {
+    install_dir="$1"
+    
+    # Check if already in PATH
+    case ":$PATH:" in
+        *":$install_dir:"*) 
+            success "Installation directory already in PATH"
+            return 0
+            ;;
+    esac
+    
+    info "Adding $install_dir to PATH"
+    
+    # Add to current session
+    export PATH="$install_dir:$PATH"
+    
+    # Add to shell config
+    shell=$(detect_shell)
+    config_file=$(get_shell_config_file "$shell")
+    
+    # Create config directory if needed
+    config_dir=$(dirname "$config_file")
+    [ -d "$config_dir" ] || mkdir -p "$config_dir" 2>/dev/null || true
+    
+    # Prepare the line to add
+    if [ "$shell" = "fish" ]; then
+        path_line="set -gx PATH $install_dir \$PATH"
+    else
+        path_line="export PATH=\"$install_dir:\$PATH\""
+    fi
+    
+    # Add to config if not already present
+    if [ -w "$config_file" ] || [ ! -e "$config_file" ]; then
+        if ! grep -qF "$install_dir" "$config_file" 2>/dev/null; then
+            {
+                echo ""
+                echo "# Added by AIFixer installer"
+                echo "$path_line"
+            } >> "$config_file"
+            success "Added to $config_file"
+        fi
+    else
+        warn "Could not update $config_file (not writable)"
+        echo
+        echo "Add this line to your shell configuration:"
+        echo "  $path_line"
+    fi
+}
+
+# ─── API Key Configuration ────────────────────────────────────────────────────
 
 configure_api_key() {
-  # If explicitly skipping and no key provided, exit early
-  [ $ASK_API_KEY -eq 0 ] && [ -z "$API_KEY" ] && return
-
-  # Check if we can interact with the user
-  # If not in a terminal and /dev/tty is not available, skip interactive prompts
-  if ! [ -t 0 ] && ! [ -r /dev/tty ]; then
-    log "Non-interactive environment detected. Skipping API key configuration."
-    log "To set API key, use: export OPENROUTER_API_KEY=\"your-key-here\""
-    return
-  fi
-
-  # Check if API key is already set in environment
-  if [ -n "$OPENROUTER_API_KEY" ] && [ -z "$API_KEY" ]; then
-    log "OPENROUTER_API_KEY is already set in your environment."
-    printf "Would you like to overwrite it? (y/N): "
-    # Use /dev/tty for input when stdin is not a terminal (e.g., curl | sh)
-    if [ -t 0 ]; then
-      read resp
-    else
-      read resp </dev/tty
-    fi
-    case "$resp" in
-      [Yy]*) ;;
-      *) 
-        log "Keeping existing API key."
-        return 
-        ;;
-    esac
-  fi
-
-  if [ -z "$API_KEY" ]; then
-    # If we reach here from the overwrite path, skip the initial prompt
-    if [ -z "$OPENROUTER_API_KEY" ]; then
-      printf "Would you like to set your OpenRouter API key now? (y/N): "
-      # Use /dev/tty for input when stdin is not a terminal
-      if [ -t 0 ]; then
-        read resp
-      else
-        read resp </dev/tty
-      fi
-      case "$resp" in
-        [Yy]*) ;;
-        *) return ;;
-      esac
+    # Skip if --skip-api-key was used
+    [ "${SKIP_API_KEY:-0}" = "1" ] && return 0
+    
+    # Skip in non-interactive environments
+    if ! [ -t 0 ] && ! [ -e /dev/tty ]; then
+        return 0
     fi
     
-    # POSIX sh doesn't support read -s, so we use stty
-    printf "Enter API key (input hidden): "
-    # Save current terminal settings
-    old_tty_settings=$(stty -g 2>/dev/null || true)
-    stty -echo 2>/dev/null || true
-    # Use /dev/tty for input when stdin is not a terminal
-    if [ -t 0 ]; then
-      read API_KEY
+    echo
+    info "OpenRouter API Key Configuration"
+    
+    # Check existing key
+    if [ -n "${OPENROUTER_API_KEY-}" ]; then
+        success "API key already set in environment"
+        printf "Update it? [y/N] "
+        read -r response < /dev/tty || return 0
+        case "$response" in
+            [Yy]*) ;;
+            *) return 0 ;;
+        esac
     else
-      read API_KEY </dev/tty
+        printf "Configure OpenRouter API key now? [Y/n] "
+        read -r response < /dev/tty || return 0
+        case "$response" in
+            [Nn]*) 
+                echo
+                echo "To set it later, run:"
+                echo "  export OPENROUTER_API_KEY=\"your-key-here\""
+                return 0
+                ;;
+        esac
     fi
-    # Restore terminal settings
-    [ -n "$old_tty_settings" ] && stty "$old_tty_settings" 2>/dev/null || stty echo 2>/dev/null || true
+    
+    # Read API key
+    printf "Enter your API key: "
+    stty -echo 2>/dev/null || true
+    read -r api_key < /dev/tty || true
+    stty echo 2>/dev/null || true
     echo
     
-    [ -z "$API_KEY" ] && { log "No key entered – skipping."; return; }
-  fi
+    [ -z "$api_key" ] && return 0
+    
+    # Set for current session
+    export OPENROUTER_API_KEY="$api_key"
+    
+    # Add to shell config
+    shell=$(detect_shell)
+    config_file=$(get_shell_config_file "$shell")
+    
+    if [ "$shell" = "fish" ]; then
+        key_line="set -gx OPENROUTER_API_KEY \"$api_key\""
+    else
+        key_line="export OPENROUTER_API_KEY=\"$api_key\""
+    fi
+    
+    if [ -w "$config_file" ] || [ ! -e "$config_file" ]; then
+        # Remove any existing key first
+        if [ -f "$config_file" ]; then
+            temp_file=$(mktemp)
+            grep -v "OPENROUTER_API_KEY" "$config_file" > "$temp_file" 2>/dev/null || true
+            mv "$temp_file" "$config_file"
+        fi
+        
+        # Add new key
+        {
+            echo ""
+            echo "# AIFixer API key"
+            echo "$key_line"
+        } >> "$config_file"
+        success "API key saved to $config_file"
+    else
+        warn "Could not save to $config_file"
+        echo "Add this line manually:"
+        echo "  $key_line"
+    fi
+}
 
-  OPENROUTER_API_KEY="$API_KEY"
-  export OPENROUTER_API_KEY
-  log "API key set for this session."
-  persist_api_key "$API_KEY"
+# ─── Verification ─────────────────────────────────────────────────────────────
+
+verify_installation() {
+    echo
+    info "Verifying installation..."
+    
+    # Check if command is available
+    if command -v "$COMMAND_NAME" >/dev/null 2>&1; then
+        version=$("$COMMAND_NAME" --version 2>/dev/null || echo "unknown")
+        success "$COMMAND_NAME is available (version: $version)"
+    else
+        warn "$COMMAND_NAME not found in PATH"
+        warn "You may need to restart your shell or run:"
+        echo "  source $(get_shell_config_file "$(detect_shell)")"
+    fi
+    
+    # Check API key
+    if [ -n "${OPENROUTER_API_KEY-}" ]; then
+        success "API key is configured"
+    else
+        info "No API key set. AIFixer will work with Ollama, but OpenRouter requires a key."
+    fi
+}
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
+
+print_banner() {
+    echo
+    echo "${BOLD}AIFixer Installer${RESET}"
+    echo "────────────────────────────"
 }
 
 main() {
-  check_deps
-  dir=$(pick_install_dir)
-  log "Installing to: $dir"
-  install_aifixer "$dir"
-  ensure_path "$dir"
-  configure_api_key
-  log "🎉  Installation complete.  Run:  aifixer --help"
+    print_banner
+    
+    # Parse arguments
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --prefix) PREFIX="$2"; shift 2 ;;
+            --skip-api-key) SKIP_API_KEY=1; shift ;;
+            --help|-h)
+                cat <<EOF
+Usage: $0 [options]
+
+Options:
+  --prefix DIR       Install to DIR/bin instead of auto-detecting
+  --skip-api-key     Don't prompt for OpenRouter API key
+  --help             Show this help message
+
+Environment:
+  PREFIX             Installation directory (same as --prefix)
+
+Examples:
+  # Standard installation
+  curl -fsSL https://install.aifixer.com | sh
+  
+  # Install to custom location
+  curl -fsSL https://install.aifixer.com | PREFIX=~/.local sh
+  
+  # Install without API key prompt
+  curl -fsSL https://install.aifixer.com | sh -s -- --skip-api-key
+EOF
+                exit 0
+                ;;
+            *) die "Unknown option: $1" ;;
+        esac
+    done
+    
+    # Run installation steps
+    install_dir=$(get_install_dir)
+    install_aifixer "$install_dir"
+    configure_path "$install_dir"
+    configure_api_key
+    verify_installation
+    
+    # Success message
+    echo
+    echo "${GREEN}${BOLD}✨ Installation complete!${RESET}"
+    echo
+    echo "Get started with:"
+    echo "  ${BOLD}$COMMAND_NAME --help${RESET}"
+    echo
+    
+    # Remind about shell restart if needed
+    if ! command -v "$COMMAND_NAME" >/dev/null 2>&1; then
+        echo "${YELLOW}Note:${RESET} You may need to restart your shell or run:"
+        echo "  source $(get_shell_config_file "$(detect_shell)")"
+        echo
+    fi
 }
 
+# Run installer
 main "$@"
