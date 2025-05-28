@@ -1,10 +1,10 @@
 # 🔧 AIFixer
 
-POSIX-compliant terminal-based coding tool with OpenRouter and (optional) ollama support that can run anywhere.
+**Fix your code with AI, right from your terminal**
 
 <p align="center">
   <img src="./logo.svg" alt="AIFixer" width="600">
-  <br>
+  <br><br>
   <a href="https://github.com/bradflaugher/aifixer/actions"><img src="https://img.shields.io/github/actions/workflow/status/bradflaugher/aifixer/ci.yml?branch=main&style=flat-square" alt="Build Status"></a>
   <a href="https://github.com/bradflaugher/aifixer/stargazers"><img src="https://img.shields.io/github/stars/bradflaugher/aifixer?style=flat-square" alt="Stars"></a>
   <a href="https://github.com/bradflaugher/aifixer/network/members"><img src="https://img.shields.io/github/forks/bradflaugher/aifixer?style=flat-square" alt="Forks"></a>
@@ -13,209 +13,356 @@ POSIX-compliant terminal-based coding tool with OpenRouter and (optional) ollama
 </p>
 
 <p align="center">
-  <strong>🤖 AI-powered code improvements directly in your terminal</strong>
+  <strong>Simple • Portable • Powerful</strong>
   <br>
-  <em>Explains complicated code • Generates useful scripts • Fixes your TODOs</em>
+  <em>The Unix way to use AI for code: pipe in, get better code out</em>
 </p>
 
 ---
 
-## 📥 Installation
+## ✨ What is AIFixer?
 
-Works on any Unix-like system (Linux, macOS, BSD) or Windows with WSL.
+AIFixer is a lightweight command-line tool that uses AI to fix, improve, and complete your code. It follows the Unix philosophy: do one thing well, work with pipes, stay simple.
 
-### Quick Install
+```sh
+# It's this simple:
+cat broken.py | aifixer > fixed.py
+```
+
+### 🎯 Why AIFixer?
+
+- **🪶 Lightweight**: Just a shell script - no Node.js, Python, or heavy dependencies
+- **🔌 Flexible**: Use any AI model - OpenRouter gives you access to Claude, GPT-4, Gemini, and more
+- **🏠 Privacy-first**: Run completely offline with Ollama and local models
+- **💰 Pay-per-use**: No subscriptions - only pay for what you use
+- **🐧 Universal**: Works on Linux, macOS, BSD, WSL - anywhere with a shell
+
+## 🚀 Quick Start
+
+### 1. Install (30 seconds)
 
 ```sh
 curl -sL https://raw.githubusercontent.com/bradflaugher/aifixer/main/install.sh | sh
 ```
 
-<details>
-<summary><strong>Manual Install</strong></summary>
+The installer will:
+- ✅ Install jq if needed (our only dependency)
+- ✅ Add aifixer to your PATH
+- ✅ Help you set up your API key
+
+### 2. Get an API Key
+
+Sign up for a free [OpenRouter](https://openrouter.ai) account and [create an API key](https://openrouter.ai/keys).
 
 ```sh
-# Download the script
-wget https://raw.githubusercontent.com/bradflaugher/aifixer/main/aifixer.sh
-chmod +x aifixer.sh
-
-# Set your API key
-export OPENROUTER_API_KEY="your-key-here"
+export OPENROUTER_API_KEY="sk-or-v1-..."
 ```
 
-</details>
-
-## 🤯 Let aifixer explain a code to you 
+### 3. Start Fixing Code!
 
 ```sh
-# Help!
-cat messy_script.sh | aifixer "please explain to me what this does"
+# Fix TODO comments in your code
+cat app.py | aifixer > app_fixed.py
+
+# Ask for specific improvements
+cat script.sh | aifixer -p "add error handling and logging" > robust_script.sh
+
+# Generate new code
+aifixer -p "write a Python script to resize images" > resize_images.py
 ```
 
+## 📚 Real-World Examples
 
-## ✨ Let aifixer write generate a useful script
-
-```sh
-# Generate code
-aifixer --prompt "write me an interactive bash script to harden my ubuntu install" > hadening_script.sh
-```
-
-## 📚 Give aifixer an existing file to fix 
-
-```sh
-# Fix a file
-cat broken_code.py | aifixer > fixed_code.py
-```
-
-> The default prompt for AIFixer is designed to fix TODOs and improve code quality. For best results when using the default prompt, ensure your input file contains TODO comments that describe what needs to be implemented or fixed.
-> 
-> **Example workflow:**
-> 1. Add TODO comments to your code describing what needs to be done
-> 2. Pipe the file to AIFixer: `cat broken_code.py | aifixer > fixed_code.py`
-> 3. AIFixer will implement the TODOs and improve the overall code quality
-> 
-> See the examples below for input and output demonstrations.
+### 🔧 Fix Code with TODOs
 
 <details>
-<summary>example <code>broken_code.py</code> (click to expand)</summary>
+<summary><strong>Input:</strong> <code>server.js</code> with TODO comments</summary>
 
-```python
-def process_user_data(user_id):
-    # TODO: Validate user_id format
-    # TODO: Add logging
-    # TODO: Handle database connection errors
-    
-    conn = get_db_connection()
-    return conn.query(f"SELECT * FROM users WHERE id = {user_id}")
-```
+```javascript
+const express = require('express');
+const app = express();
 
-</details>
+// TODO: Add request logging middleware
+// TODO: Add error handling for async routes
+// TODO: Implement rate limiting
 
-<details>
-<summary>example <code>fixed_code.py</code> (click to expand)</summary>
+app.get('/api/users/:id', (req, res) => {
+    // TODO: Validate user ID format
+    // TODO: Add caching
+    const user = db.getUser(req.params.id);
+    res.json(user);
+});
 
-```python
-import logging
-import re
-from contextlib import contextmanager
-
-logger = logging.getLogger(__name__)
-
-def process_user_data(user_id):
-    # Validate user_id format
-    if not isinstance(user_id, (int, str)):
-        raise ValueError("user_id must be an integer or string")
-    
-    if isinstance(user_id, str) and not re.match(r'^\d+$', user_id):
-        raise ValueError("user_id string must contain only digits")
-    
-    logger.info(f"Processing data for user_id: {user_id}")
-    
-    # Handle database connection errors
-    try:
-        with get_db_connection() as conn:
-            # Use parameterized query to prevent SQL injection
-            result = conn.query("SELECT * FROM users WHERE id = ?", (user_id,))
-            logger.debug(f"Retrieved {len(result)} rows for user_id: {user_id}")
-            return result
-    except DatabaseConnectionError as e:
-        logger.error(f"Database connection failed: {e}")
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error processing user_id {user_id}: {e}")
-        raise
-```
-
-</details>
-
-
-## 📋 What is AIFixer?
-
-AIFixer is a command-line tool that uses AI to automatically fix, improve, and complete your code. It's designed as a simple Unix filter: pipe in code, get improved code out.
-
-**✨ Key features:**
-- **🎯 Portable**: POSIX-compliant shell script that runs on any Unix-like system
-- **📦 No dependencies**: Works out of the box without package managers or runtime environments
-- **🔌 Flexible**: Supports multiple AI providers (OpenRouter, Ollama for local models)
-- **🐧 Unix philosophy**: Designed to work with pipes, scripts, and existing workflows
-
-## 🎯 Common Use Cases
-
-<details>
-<summary><strong>🛡️ Adding Error Handling</strong></summary>
-
-```sh
-# Add comprehensive error handling
-cat api_client.js | aifixer --prompt "Add proper error handling and retry logic" > robust_api_client.js
+app.listen(3000);
 ```
 </details>
 
 <details>
-<summary><strong>♻️ Refactoring Code</strong></summary>
+<summary><strong>Output:</strong> Complete implementation</summary>
 
-```sh
-# Refactor for better performance
-cat slow_algorithm.py | aifixer --prompt "Optimize this algorithm for better time complexity" > optimized_algorithm.py
+```javascript
+const express = require('express');
+const morgan = require('morgan');
+const rateLimit = require('express-rate-limit');
+const NodeCache = require('node-cache');
+const { body, param, validationResult } = require('express-validator');
 
-# Improve code structure
-cat monolithic_function.js | aifixer --prompt "Break this into smaller, testable functions" > refactored.js
+const app = express();
+const cache = new NodeCache({ stdTTL: 600 }); // 10 minute cache
+
+// Add request logging middleware
+app.use(morgan('combined'));
+
+// Implement rate limiting
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100 // limit each IP to 100 requests per windowMs
+});
+app.use('/api/', limiter);
+
+// Add error handling for async routes
+const asyncHandler = (fn) => (req, res, next) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+};
+
+app.get('/api/users/:id', 
+    // Validate user ID format
+    param('id').isUUID().withMessage('Invalid user ID format'),
+    asyncHandler(async (req, res) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+
+        const userId = req.params.id;
+        
+        // Check cache first
+        const cachedUser = cache.get(userId);
+        if (cachedUser) {
+            return res.json(cachedUser);
+        }
+
+        const user = await db.getUser(userId);
+        
+        // Add to cache
+        cache.set(userId, user);
+        
+        res.json(user);
+    })
+);
+
+// Global error handler
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).send('Something broke!');
+});
+
+app.listen(3000, () => {
+    console.log('Server running on port 3000');
+});
 ```
 </details>
 
-<details>
-<summary><strong>🚀 Advanced Usage</strong></summary>
+### 🤖 Other Common Tasks
 
-**Model Selection:**
 ```sh
-# List available models
-aifixer --list-models
+# Explain complex code
+cat legacy_algorithm.c | aifixer -p "explain what this does in simple terms"
 
-# Use a specific model
-cat code.py | aifixer --model anthropic/claude-4-opus > fixed.py
+# Add type hints to Python
+cat utils.py | aifixer -p "add comprehensive type hints" > typed_utils.py
+
+# Convert between languages
+cat script.sh | aifixer -p "convert this to Python" > script.py
+
+# Optimize performance
+cat slow_query.sql | aifixer -p "optimize this query" > fast_query.sql
+
+# Add tests
+cat calculator.js | aifixer -p "write unit tests for this" > calculator.test.js
 ```
 
-**Local AI with Ollama:**
+## 🛠️ Advanced Usage
+
+### Choose Your AI Model
+
+AIFixer supports 100+ models through OpenRouter. Pick the right tool for the job:
+
 ```sh
-# Install and use a local model
+# List all available models
+aifixer --list
+
+# Use GPT-4 for complex tasks
+cat complex_refactor.py | aifixer -m openai/gpt-4 > refactored.py
+
+# Use Claude for nuanced code review
+cat api.rb | aifixer -m anthropic/claude-3.5-sonnet -p "review for security issues"
+
+# Use a fast model for simple fixes
+cat style.css | aifixer -m google/gemini-flash-1.5 -p "fix formatting"
+```
+
+### Run Offline with Ollama
+
+Perfect for sensitive code or when you're offline:
+
+```sh
+# Install Ollama (if not already installed)
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Pull a coding model
 ollama pull codellama
-cat code.py | aifixer --ollama-model codellama > fixed.py
+
+# Use it with AIFixer
+cat private_code.py | aifixer -o codellama > fixed_private_code.py
 ```
 
-</details>
+### Integrate into Your Workflow
 
-<details>
-<summary><strong>⚙️ How It Works</strong></summary>
+```sh
+# Git pre-commit hook
+git diff --cached --name-only | grep "\.py$" | xargs cat | aifixer -p "check for common bugs"
 
-AIFixer follows the Unix philosophy of doing one thing well:
+# CI/CD pipeline
+find src -name "*.js" -exec sh -c 'cat {} | aifixer > {}.fixed && mv {}.fixed {}' \;
 
-1. **📥 Read** code from stdin
-2. **🔍 Analyze** the code using AI to identify issues and TODOs
-3. **⚡ Generate** improved code
-4. **📤 Output** the result to stdout
+# Vim integration
+:!cat % | aifixer > %.fixed && mv %.fixed %
 
-This simple design makes it easy to integrate into existing workflows, CI/CD pipelines, and shell scripts.
+# VS Code task
+"command": "cat ${file} | aifixer > ${file}.fixed && mv ${file}.fixed ${file}"
+```
 
-</details>
+## 📊 Why Choose AIFixer?
 
-## 📊 Comparison with Alternatives
+<table>
+<tr>
+  <th></th>
+  <th>AIFixer 🔧</th>
+  <th>GitHub Copilot</th>
+  <th>Cursor</th>
+  <th>Continue.dev</th>
+</tr>
+<tr>
+  <td><strong>Interface</strong></td>
+  <td>✅ CLI (Unix pipes)</td>
+  <td>❌ IDE only</td>
+  <td>❌ IDE only</td>
+  <td>❌ IDE only</td>
+</tr>
+<tr>
+  <td><strong>Dependencies</strong></td>
+  <td>✅ Just <code>jq</code></td>
+  <td>❌ IDE plugin</td>
+  <td>❌ Entire IDE</td>
+  <td>❌ IDE plugin</td>
+</tr>
+<tr>
+  <td><strong>Works Offline</strong></td>
+  <td>✅ Yes (Ollama)</td>
+  <td>❌ No</td>
+  <td>❌ No</td>
+  <td>✅ Yes</td>
+</tr>
+<tr>
+  <td><strong>Model Choice</strong></td>
+  <td>✅ 100+ models</td>
+  <td>❌ GPT only</td>
+  <td>❌ Limited</td>
+  <td>✅ Good selection</td>
+</tr>
+<tr>
+  <td><strong>Pricing</strong></td>
+  <td>✅ Pay-per-use</td>
+  <td>💸 $10-20/month</td>
+  <td>💸 $20/month</td>
+  <td>✅ Free (limited)</td>
+</tr>
+<tr>
+  <td><strong>Scriptable</strong></td>
+  <td>✅ Built for it</td>
+  <td>❌ No</td>
+  <td>❌ No</td>
+  <td>❌ Limited</td>
+</tr>
+</table>
 
-| Feature | AIFixer | Claude Code | Aider | Cursor |
-|---------|---------|-------------|-------|----------------|
-| **🖥️ Interface** | 🚀 CLI (pipe-based) | 🤖 CLI (interactive) | 🤖 CLI (interactive) | 🔌 IDE |
-| **📦 Dependencies** | ✨ None (shell script) | 📦 Node.js | 🐍 Python | 💻 IDE |
-| **🌐 Offline Support** | 🏠 Yes (via Ollama) | ☁️ No ❌ | 🏠 Yes  | ☁️ No ❌|
-| **💰 Price Model** | 💳 Pay-per-use (via OpenRouter) | 💳 Pay-per-use or 🔄 Subscription | 💳 Pay-per-use | 🔄 Subscription |
-| **💾 System Requirements** | 🥔 Runs on a potato | 🖥️ Modern system | 🖥️ Modern system | 🖥️ Modern System |
-| **🎯 Model Selection** | 🔥 Choose any model per task | 🔒 Limited to Claude models | 🔒 Pre-configured models | 🔒 Pre-configured models |
-| **🧠 Model Flexibility** | 💪 Use the latest frontier models  | 🤖 Claude Models Only | 💪 Use the latest frontier models | 🤖 Limited provider support |
+### 🎯 The Right Tool for the Right Job
 
-### Why Model Choice Matters
+- **Quick fixes & automation**: AIFixer shines here - scriptable, fast, efficient
+- **Interactive development**: IDE tools are better for real-time suggestions
+- **Batch processing**: AIFixer is unmatched - process entire codebases with shell scripts
+- **Learning & exploration**: Use AIFixer to understand code by asking questions
 
-> See a full list of supported models at [openrouter.ai/models](https://openrouter.ai/models?order=top-weekly)
+## 🔧 Configuration
 
-With AIFixer, you can choose the right model for each task:
-- **🚀 Complex refactoring?** → Use the latest frontier models as soon as they're released
-- **⚡ Quick fixes?** → Use distilled, optimized and quantized models if you like
-- **💰 Budget conscious?** → Mix and match models based on task complexity
-- **🔒 Privacy concerns?** → Use local models via Ollama, or an open source model from OpenRouter
+### Environment Variables
 
-Other tools often lock you into using their default model (sometimes a lighter version to save costs), but AIFixer lets you leverage the full power of frontier models when you need it most.
+```sh
+# Required for OpenRouter
+export OPENROUTER_API_KEY="sk-or-v1-..."
+
+# Optional: Set default model
+export AIFIXER_MODEL="anthropic/claude-3.5-sonnet"
+
+# Optional: Custom prompts directory
+export AIFIXER_PROMPTS_DIR="$HOME/.config/aifixer/prompts"
+```
+
+### Custom Prompts
+
+Save frequently used prompts:
+
+```sh
+# Save a custom prompt
+echo "Add comprehensive error handling and logging" > ~/.config/aifixer/prompts/robust
+
+# Use it
+cat server.py | aifixer -p @robust > robust_server.py
+```
+
+## 📖 Command Reference
+
+```
+Usage: aifixer [OPTIONS] [TEXT...]
+
+Options:
+  -h, --help              Show help
+  -v, --version           Show version
+  -m, --model MODEL       Use specific model (default: anthropic/claude-3.5-sonnet)
+  -o, --ollama MODEL      Use Ollama model (local)
+  -p, --prompt TEXT       Custom prompt (default: "Fix the TODOs")
+  -l, --list              List available models
+  --list-ollama           List local Ollama models
+
+Examples:
+  # Fix TODOs in a file
+  cat app.py | aifixer > fixed_app.py
+  
+  # Generate new code
+  aifixer -p "write a web scraper in Python" > scraper.py
+  
+  # Use local model
+  cat private.rs | aifixer -o codellama > fixed_private.rs
+  
+  # Explain code
+  cat complex.c | aifixer -p "explain this code" > explanation.md
+```
+
+## 📄 License
+
+GPLv3 License - see [LICENSE](LICENSE) for details.
+
+## 🙏 Acknowledgments
+
+- Built on [OpenRouter](https://openrouter.ai) for model access
+- Local AI powered by [Ollama](https://ollama.ai)
+- Inspired by Unix philosophy
+
+---
+
+<p align="center">
+  Made with ❤️ by developers who love the command line
+  <br>
+  <a href="https://github.com/bradflaugher/aifixer">⭐ Star us on GitHub</a>
+</p>
