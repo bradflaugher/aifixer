@@ -13,6 +13,11 @@ MODEL="anthropic/claude-sonnet-4"
 PROMPT="Fix the TODOs in the file below and output the full file: "
 MIN_VALID_RESPONSE_LENGTH=100  # Minimum characters for a valid response
 
+# Use a more robust temp directory that works in multiuser environments
+TMPDIR="${TMPDIR:-/tmp}"
+# Add PID and random component for uniqueness in multiuser environment
+TEMP_PREFIX="${TMPDIR}/aifixer_$$_$(od -An -N4 -tx /dev/urandom | tr -d ' ')"
+
 # Color codes for output (disabled if not in terminal)
 if [ -t 2 ]; then
     RED='\033[0;31m'
@@ -32,6 +37,13 @@ fi
 
 log_error() {
     printf "${RED}ERROR: %s${NC}\n" "$*" >&2
+}
+
+log_debug() {
+    # Add debug logging that works in headless environments
+    if [ "${DEBUG:-0}" = "1" ]; then
+        printf "DEBUG: %s\n" "$*" >&2
+    fi
 }
 
 # JSON utilities for native shell parsing
@@ -117,6 +129,7 @@ is_valid_response() {
     
     # Check if empty
     if [ -z "$content" ]; then
+        log_debug "Response validation failed: empty content"
         return 1
     fi
     
@@ -127,11 +140,13 @@ is_valid_response() {
     # Check if it's just error messages or common failure patterns first
     # (before length check to catch short error responses)
     if echo "$content" | grep -qE "^[[:space:]]*(error|Error|ERROR|null|undefined|None|\{\}|\[\])[[:space:]]*$"; then
+        log_debug "Response validation failed: error pattern detected"
         return 1
     fi
     
     # Check for responses that look like incomplete JSON or cut-off responses
     if echo "$content" | grep -qE "^[[:space:]]*\{[^}]*$|^[[:space:]]*\[[^\]]*$"; then
+        log_debug "Response validation failed: incomplete JSON"
         return 1
     fi
     
@@ -142,24 +157,29 @@ is_valid_response() {
         # Check if it's a very short last line that might be cut off
         last_line_length=${#last_line}
         if [ $last_line_length -lt 50 ]; then
+            log_debug "Response validation failed: appears cut off"
             return 1
         fi
     fi
     
     if [ $length -lt $MIN_VALID_RESPONSE_LENGTH ]; then
+        log_debug "Response validation failed: too short ($length < $MIN_VALID_RESPONSE_LENGTH)"
         return 1
     fi
     
     # Check for common API error patterns
     if echo "$content" | grep -qiE "(api error|rate limit|quota exceeded|unauthorized|forbidden|internal server error)"; then
+        log_debug "Response validation failed: API error pattern"
         return 1
     fi
     
     # Check for responses that are just whitespace or newlines
     if [ "$length" -eq 0 ]; then
+        log_debug "Response validation failed: only whitespace"
         return 1
     fi
     
+    log_debug "Response validation passed"
     return 0
 }
 
@@ -168,7 +188,7 @@ is_valid_response() {
 fetch_openrouter_models() {
     echo "Fetching OpenRouter models..." >&2
     
-    tmpfile="/tmp/aifixer_models_response_$$"
+    tmpfile="${TEMP_PREFIX}_models_response"
     (
         curl -s -m $REQUEST_TIMEOUT "$OPENROUTER_URL/models" > "$tmpfile" 2>/dev/null
     ) &
@@ -210,32 +230,64 @@ build_fix_prompt() {
     echo "$base_prompt"
 }
 
+# Simplified JSON content extraction using sed
+extract_json_content() {
+    response="$1"
+    
+    # First try to extract content field from the response
+    # This handles the nested structure of OpenRouter/Ollama responses
+    content=$(echo "$response" | sed -n 's/.*"content"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)
+    
+    # If that fails, try a more permissive pattern
+    if [ -z "$content" ]; then
+        # Look for content after "content": including escaped quotes
+        content=$(echo "$response" | sed -n 's/.*"content"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/p' | sed 's/\\"/"/g' | sed 's/\\n/\
+/g' | sed 's/\\t/	/g' | sed 's/\\\\/\\/g')
+    fi
+    
+    echo "$content"
+}
+
 process_with_openrouter() {
     api_key="$1"
     model="$2"
     prompt="$3"
     input_text="$4"
     
+    log_debug "Processing with OpenRouter model: $model"
     
     full_prompt=$(build_fix_prompt "$prompt")
     full_prompt="${full_prompt}${input_text}"
-    
     
     # Build JSON payload
     escaped_prompt=$(escape_json_string "$full_prompt")
     payload=$(printf '{"model": "%s", "messages": [{"role": "user", "content": "%s"}], "temperature": 0.7}' \
         "$model" "$escaped_prompt")
     
-    response=$(curl -s -m $REQUEST_TIMEOUT \
+    # Create temp file for response
+    response_file="${TEMP_PREFIX}_openrouter_response"
+    
+    # Make the API call and save to file
+    log_debug "Making API call to OpenRouter..."
+    curl -s -m $REQUEST_TIMEOUT \
         -H "Authorization: Bearer $api_key" \
         -H "Content-Type: application/json" \
         -d "$payload" \
-        "$OPENROUTER_URL/chat/completions" 2>/dev/null)
+        "$OPENROUTER_URL/chat/completions" > "$response_file" 2>&1
     
-    if [ $? -ne 0 ]; then
-        log_error "Request failed"
+    curl_exit=$?
+    
+    if [ $curl_exit -ne 0 ]; then
+        log_error "Curl request failed with exit code: $curl_exit"
+        rm -f "$response_file"
         return 1
     fi
+    
+    # Read response from file
+    response=$(cat "$response_file")
+    rm -f "$response_file"
+    
+    log_debug "Raw response length: ${#response}"
     
     # Check for error in response
     if echo "$response" | grep -q '"error"'; then
@@ -247,58 +299,14 @@ process_with_openrouter() {
         return 1
     fi
     
-    # Extract content from choices array using awk for robust JSON parsing
-    content=$(echo "$response" | awk '
-        BEGIN { 
-            in_content = 0; 
-            content = "";
-            escape_mode = 0;
-        }
-        {
-            line = $0;
-            if (in_content == 0 && match(line, /"content"[[:space:]]*:[[:space:]]*"/)) {
-                # Found content field, start extracting after the opening quote
-                in_content = 1;
-                start = RSTART + RLENGTH;
-                line = substr(line, start);
-            }
-            
-            if (in_content == 1) {
-                # Process character by character to handle escapes properly
-                for (i = 1; i <= length(line); i++) {
-                    c = substr(line, i, 1);
-                    
-                    if (escape_mode == 1) {
-                        # Handle escaped characters
-                        if (c == "n") content = content "\n";
-                        else if (c == "t") content = content "\t";
-                        else if (c == "\"") content = content "\"";
-                        else if (c == "\\") content = content "\\";
-                        else if (c == "r") content = content "\r";
-                        else content = content c;
-                        escape_mode = 0;
-                    } else if (c == "\\") {
-                        escape_mode = 1;
-                    } else if (c == "\"") {
-                        # Found closing quote
-                        in_content = 2;
-                        exit;
-                    } else {
-                        content = content c;
-                    }
-                }
-                if (in_content == 1) content = content "\n";
-            }
-        }
-        END { 
-            print content; 
-        }
-    ')
+    # Extract content using simplified method
+    content=$(extract_json_content "$response")
     
-    
+    log_debug "Extracted content length: ${#content}"
     
     # Validate response
     if ! is_valid_response "$content"; then
+        log_error "Invalid response from OpenRouter"
         return 1
     fi
     
@@ -310,6 +318,8 @@ process_with_ollama() {
     prompt="$2"
     input_text="$3"
     
+    log_debug "Processing with Ollama model: $model"
+    
     full_prompt=$(build_fix_prompt "$prompt")
     full_prompt="${full_prompt}${input_text}"
     
@@ -318,76 +328,42 @@ process_with_ollama() {
     payload=$(printf '{"model": "%s", "messages": [{"role": "user", "content": "%s"}], "stream": false}' \
         "$model" "$escaped_prompt")
     
+    # Create temp file for response
+    response_file="${TEMP_PREFIX}_ollama_response"
     
-    response=$(curl -s -m $REQUEST_TIMEOUT \
+    # Make the API call and save to file
+    log_debug "Making API call to Ollama..."
+    curl -s -m $REQUEST_TIMEOUT \
         -H "Content-Type: application/json" \
         -d "$payload" \
-        "$OLLAMA_URL/chat" 2>/dev/null)
+        "$OLLAMA_URL/chat" > "$response_file" 2>&1
     
     curl_exit_code=$?
     if [ $curl_exit_code -ne 0 ]; then
         log_error "Cannot connect to Ollama at $OLLAMA_URL (exit code: $curl_exit_code)"
+        rm -f "$response_file"
         exit 1
     fi
     
+    # Read response from file
+    response=$(cat "$response_file")
+    rm -f "$response_file"
     
-    # Extract content from Ollama response using awk for robust JSON parsing
-    content=$(echo "$response" | awk '
-        BEGIN { 
-            in_content = 0; 
-            content = "";
-            escape_mode = 0;
-        }
-        {
-            line = $0;
-            if (in_content == 0 && match(line, /"content"[[:space:]]*:[[:space:]]*"/)) {
-                # Found content field, start extracting after the opening quote
-                in_content = 1;
-                start = RSTART + RLENGTH;
-                line = substr(line, start);
-            }
-            
-            if (in_content == 1) {
-                # Process character by character to handle escapes properly
-                for (i = 1; i <= length(line); i++) {
-                    c = substr(line, i, 1);
-                    
-                    if (escape_mode == 1) {
-                        # Handle escaped characters
-                        if (c == "n") content = content "\n";
-                        else if (c == "t") content = content "\t";
-                        else if (c == "\"") content = content "\"";
-                        else if (c == "\\") content = content "\\";
-                        else if (c == "r") content = content "\r";
-                        else content = content c;
-                        escape_mode = 0;
-                    } else if (c == "\\") {
-                        escape_mode = 1;
-                    } else if (c == "\"") {
-                        # Found closing quote
-                        in_content = 2;
-                        exit;
-                    } else {
-                        content = content c;
-                    }
-                }
-                if (in_content == 1) content = content "\n";
-            }
-        }
-        END { 
-            print content; 
-        }
-    ')
+    log_debug "Raw response length: ${#response}"
+    
+    # Extract content using simplified method
+    content=$(extract_json_content "$response")
+    
+    log_debug "Extracted content length: ${#content}"
     
     if [ -z "$content" ]; then
         log_error "Failed to extract content from Ollama response"
+        log_debug "First 500 chars of response: $(echo "$response" | head -c 500)"
+        return 1
     fi
     
     echo "$content"
 }
-
-# ─── TODO File Analysis ────────────────────────────────────────────────────────
-
 
 # ─── Help Functions ────────────────────────────────────────────────────────────
 
@@ -414,6 +390,7 @@ Prompt Options:
 
 Environment:
   OPENROUTER_API_KEY      Required for OpenRouter models
+  DEBUG=1                 Enable debug output
 
 EOF
 }
@@ -432,6 +409,9 @@ Examples:
   
   # Custom prompt
   cat complicated_program.c | aifixer --prompt "Please explain this code"
+
+  # Debug mode
+  DEBUG=1 cat file.py | aifixer > fixed.py 2>debug.log
 
 EOF
 }
@@ -543,6 +523,7 @@ main() {
         fi
     fi
     
+    log_debug "Input text length: ${#input_text}"
     
     # Fallback models setup
     fallback_models=""
@@ -563,25 +544,50 @@ main() {
     
     if [ -n "$ollama_model" ]; then
         current_model="$ollama_model"
-        tmpfile="/tmp/aifixer_result_$$"
+        log_debug "Using Ollama model: $current_model"
+        
+        tmpfile="${TEMP_PREFIX}_result"
+        tmpfile_status="${TEMP_PREFIX}_status"
+        
+        # Run in background and capture both result and status
         (
-            result=$(process_with_ollama "$current_model" "$PROMPT" "$input_text")
+            result=$(process_with_ollama "$current_model" "$PROMPT" "$input_text" 2>&1)
+            status=$?
+            echo "$status" > "$tmpfile_status"
             echo "$result" > "$tmpfile"
         ) &
-        spinner "Processing via Ollama ($current_model)..." $!
+        pid=$!
+        
+        spinner "Processing via Ollama ($current_model)..." $pid
+        
+        # Read status and result
+        status=$(cat "$tmpfile_status" 2>/dev/null || echo "1")
         result=$(cat "$tmpfile" 2>/dev/null)
-        rm -f "$tmpfile"
-        success=1
+        rm -f "$tmpfile" "$tmpfile_status"
+        
+        if [ "$status" -eq 0 ] && [ -n "$result" ]; then
+            success=1
+        else
+            log_error "Ollama processing failed"
+            log_debug "Status: $status"
+            log_debug "Result: $result"
+        fi
     else
         # Try primary model first
-        tmpfile_result="/tmp/aifixer_result_$$"
-        tmpfile_status="/tmp/aifixer_status_$$"
+        log_debug "Using OpenRouter model: $current_model"
+        
+        tmpfile_result="${TEMP_PREFIX}_result"
+        tmpfile_status="${TEMP_PREFIX}_status"
+        
         (
-            result=$(process_with_openrouter "$api_key" "$current_model" "$PROMPT" "$input_text")
-            echo "$?" > "$tmpfile_status"
+            result=$(process_with_openrouter "$api_key" "$current_model" "$PROMPT" "$input_text" 2>&1)
+            status=$?
+            echo "$status" > "$tmpfile_status"
             echo "$result" > "$tmpfile_result"
         ) &
-        spinner "Processing via OpenRouter ($current_model)..." $!
+        pid=$!
+        
+        spinner "Processing via OpenRouter ($current_model)..." $pid
         
         status=$(cat "$tmpfile_status" 2>/dev/null || echo "1")
         result=$(cat "$tmpfile_result" 2>/dev/null)
@@ -592,37 +598,46 @@ main() {
             success=1
         else
             # Primary model failed or returned invalid response
+            log_error "OpenRouter processing failed"
+            log_debug "Status: $status"
+            log_debug "Result length: ${#result}"
             
             # Try fallback models if available
             if [ -n "$fallback_models" ]; then
+                log_debug "Trying fallback models..."
                 
-                # Try fallback models (fixed: no subshell issue)
+                # Try fallback models
                 while IFS= read -r model; do
-                [ -z "$model" ] && continue
-                current_model="$model"
-                
-                tmpfile_result="/tmp/aifixer_result_$$"
-                tmpfile_status="/tmp/aifixer_status_$$"
-                (
-                    result=$(process_with_openrouter "$api_key" "$current_model" "$PROMPT" "$input_text")
-                    echo "$?" > "$tmpfile_status"
-                    echo "$result" > "$tmpfile_result"
-                ) &
-                spinner "Processing via OpenRouter ($current_model)..." $!
-                
-                status=$(cat "$tmpfile_status" 2>/dev/null || echo "1")
-                result=$(cat "$tmpfile_result" 2>/dev/null)
-                rm -f "$tmpfile_status" "$tmpfile_result"
-                
-                # Check if this model succeeded with valid response
-                if [ "$status" -eq 0 ] && is_valid_response "$result"; then
-                    success=1
-                    break
-                else
-                    # Small delay before trying next model to avoid rate limits
-                    sleep 1
-                fi
-            done <<EOF
+                    [ -z "$model" ] && continue
+                    current_model="$model"
+                    log_debug "Trying fallback model: $current_model"
+                    
+                    tmpfile_result="${TEMP_PREFIX}_result"
+                    tmpfile_status="${TEMP_PREFIX}_status"
+                    (
+                        result=$(process_with_openrouter "$api_key" "$current_model" "$PROMPT" "$input_text" 2>&1)
+                        status=$?
+                        echo "$status" > "$tmpfile_status"
+                        echo "$result" > "$tmpfile_result"
+                    ) &
+                    pid=$!
+                    
+                    spinner "Processing via OpenRouter ($current_model)..." $pid
+                    
+                    status=$(cat "$tmpfile_status" 2>/dev/null || echo "1")
+                    result=$(cat "$tmpfile_result" 2>/dev/null)
+                    rm -f "$tmpfile_status" "$tmpfile_result"
+                    
+                    # Check if this model succeeded with valid response
+                    if [ "$status" -eq 0 ] && is_valid_response "$result"; then
+                        success=1
+                        break
+                    else
+                        log_debug "Fallback model $current_model failed"
+                        # Small delay before trying next model to avoid rate limits
+                        sleep 1
+                    fi
+                done <<EOF
 $fallback_models
 EOF
             fi
@@ -641,8 +656,14 @@ EOF
         echo "Completed in ${elapsed}s with $current_model ✓" >&2
     fi
     
-    # Output result
-    echo "$result"
+    # Output result - this is the critical part!
+    # Make sure result is properly output to stdout
+    if [ -n "$result" ]; then
+        echo "$result"
+    else
+        log_error "Result is empty!"
+        exit 1
+    fi
 }
 
 # Run main function
