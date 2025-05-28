@@ -3,7 +3,7 @@
 
 set -eu
 
-VERSION="3.0.0"
+VERSION="3.0.1"
 OPENROUTER_URL="https://openrouter.ai/api/v1"
 OLLAMA_URL="http://localhost:11434/api"
 REQUEST_TIMEOUT=60
@@ -18,32 +18,30 @@ log_error() {
     printf "ERROR: %s\n" "$*" >&2
 }
 
-# Build JSON payload
+# Build JSON payload with proper escaping
 build_payload() {
     model="$1"
     content="$2"
     
-    jq -n \
-        --arg model "$model" \
-        --arg content "$content" \
+    # Use printf to ensure content is passed correctly to jq
+    printf '%s' "$content" | jq -Rs --arg model "$model" \
         '{
             model: $model,
-            messages: [{role: "user", content: $content}],
+            messages: [{role: "user", content: .}],
             temperature: 0.7
         }' | jq -c .
 }
 
-# Build Ollama payload
+# Build Ollama payload with proper escaping
 build_ollama_payload() {
     model="$1"
     content="$2"
     
-    jq -n \
-        --arg model "$model" \
-        --arg content "$content" \
+    # Use printf to ensure content is passed correctly to jq
+    printf '%s' "$content" | jq -Rs --arg model "$model" \
         '{
             model: $model,
-            messages: [{role: "user", content: $content}],
+            messages: [{role: "user", content: .}],
             stream: false
         }' | jq -c .
 }
@@ -70,11 +68,22 @@ call_openrouter() {
     
     payload=$(build_payload "$model" "$content")
     
-    curl -s -S -m "$REQUEST_TIMEOUT" \
+    # Store response in temp file to avoid shell interpretation
+    response_file=$(mktemp)
+    trap "rm -f '$response_file'" EXIT
+    
+    if curl -s -S -m "$REQUEST_TIMEOUT" \
         -H "Authorization: Bearer $api_key" \
         -H "Content-Type: application/json" \
         -d "$payload" \
-        "$OPENROUTER_URL/chat/completions"
+        "$OPENROUTER_URL/chat/completions" > "$response_file"; then
+        cat "$response_file"
+    else
+        rm -f "$response_file"
+        return 1
+    fi
+    
+    rm -f "$response_file"
 }
 
 call_ollama() {
@@ -83,28 +92,53 @@ call_ollama() {
     
     payload=$(build_ollama_payload "$model" "$content")
     
-    curl -s -S -m "$REQUEST_TIMEOUT" \
+    # Store response in temp file to avoid shell interpretation
+    response_file=$(mktemp)
+    trap "rm -f '$response_file'" EXIT
+    
+    if curl -s -S -m "$REQUEST_TIMEOUT" \
         -H "Content-Type: application/json" \
         -d "$payload" \
-        "$OLLAMA_URL/chat"
+        "$OLLAMA_URL/chat" > "$response_file"; then
+        cat "$response_file"
+    else
+        rm -f "$response_file"
+        return 1
+    fi
+    
+    rm -f "$response_file"
 }
 
-# Extract content from response
+# Extract content from response using temp file
 extract_content() {
     provider="$1"
     response="$2"
     
+    # Use temp file to avoid issues with special characters
+    content_file=$(mktemp)
+    trap "rm -f '$content_file'" EXIT
+    
     if [ "$provider" = "ollama" ]; then
-        echo "$response" | jq -r '.message.content // empty'
+        printf '%s' "$response" | jq -r '.message.content // empty' > "$content_file"
     else
-        echo "$response" | jq -r '.choices[0].message.content // empty'
+        printf '%s' "$response" | jq -r '.choices[0].message.content // empty' > "$content_file"
+    fi
+    
+    # Check if we got content
+    if [ -s "$content_file" ]; then
+        cat "$content_file"
+        rm -f "$content_file"
+        return 0
+    else
+        rm -f "$content_file"
+        return 1
     fi
 }
 
 # Check for API error
 check_error() {
     response="$1"
-    echo "$response" | jq -r '.error.message // .error // empty'
+    printf '%s' "$response" | jq -r '.error.message // .error // empty' 2>/dev/null || true
 }
 
 # ─── Model Listing ────────────────────────────────────────────────────────────
@@ -114,10 +148,16 @@ list_models() {
     
     if [ "$provider" = "openrouter" ]; then
         curl -s -m "$REQUEST_TIMEOUT" "$OPENROUTER_URL/models" | \
-            jq -r '.data[].id'
+            jq -r '.data[].id' 2>/dev/null || {
+                log_error "Failed to list OpenRouter models"
+                return 1
+            }
     else
         curl -s -m "$REQUEST_TIMEOUT" "$OLLAMA_URL/tags" | \
-            jq -r '.models[].name'
+            jq -r '.models[].name' 2>/dev/null || {
+                log_error "Failed to list Ollama models"
+                return 1
+            }
     fi
 }
 
@@ -131,15 +171,24 @@ process_input() {
     api_key="${5:-}"
     
     # Combine prompt and input
-    full_content="$prompt$input_text"
+    full_content="${prompt}${input_text}"
     
     show_progress "$model"
     
-    # Make API call
+    # Make API call and store response
+    response=""
     if [ "$provider" = "ollama" ]; then
-        response=$(call_ollama "$model" "$full_content")
+        response=$(call_ollama "$model" "$full_content") || {
+            show_done
+            log_error "Failed to call Ollama API"
+            return 1
+        }
     else
-        response=$(call_openrouter "$api_key" "$model" "$full_content")
+        response=$(call_openrouter "$api_key" "$model" "$full_content") || {
+            show_done
+            log_error "Failed to call OpenRouter API"
+            return 1
+        }
     fi
     
     show_done
@@ -156,15 +205,20 @@ process_input() {
         return 1
     fi
     
-    # Extract and output content
-    content=$(extract_content "$provider" "$response")
+    # Extract and output content using temp file
+    output_file=$(mktemp)
+    trap "rm -f '$output_file'" EXIT
     
-    if [ -z "$content" ]; then
+    if extract_content "$provider" "$response" > "$output_file"; then
+        # Output the content exactly as received
+        cat "$output_file"
+        rm -f "$output_file"
+        return 0
+    else
+        rm -f "$output_file"
         log_error "No content in response"
         return 1
     fi
-    
-    printf '%s\n' "$content"
 }
 
 # ─── Help Functions ───────────────────────────────────────────────────────────
@@ -196,7 +250,7 @@ Examples:
   cat main.go | aifixer -o codellama > fixed.go
   
   # Custom prompt
-  aifixer --prompt "write me an interactive bash script to harden my ubuntu install" > hadening_script.sh
+  aifixer --prompt "write me an interactive bash script to harden my ubuntu install" > hardening_script.sh
 EOF
 }
 
@@ -219,14 +273,26 @@ main() {
                 exit 0
                 ;;
             -m|--model)
+                if [ $# -lt 2 ]; then
+                    log_error "Option -m requires an argument"
+                    exit 1
+                fi
                 MODEL="$2"
                 shift 2
                 ;;
             -o|--ollama)
+                if [ $# -lt 2 ]; then
+                    log_error "Option -o requires an argument"
+                    exit 1
+                fi
                 ollama_model="$2"
                 shift 2
                 ;;
             -p|--prompt)
+                if [ $# -lt 2 ]; then
+                    log_error "Option -p requires an argument"
+                    exit 1
+                fi
                 custom_prompt="$2"
                 shift 2
                 ;;
@@ -248,7 +314,11 @@ main() {
                 exit 1
                 ;;
             *)
-                text_args="$text_args $1"
+                if [ -z "$text_args" ]; then
+                    text_args="$1"
+                else
+                    text_args="$text_args $1"
+                fi
                 shift
                 ;;
         esac
@@ -259,18 +329,26 @@ main() {
         PROMPT="$custom_prompt"
     fi
     
-    # Get input
+    # Get input - use temp file for robustness
+    input_file=$(mktemp)
+    trap "rm -f '$input_file'" EXIT
+    
     if [ -n "$text_args" ]; then
-        input_text="$text_args"
+        printf '%s' "$text_args" > "$input_file"
     elif [ ! -t 0 ]; then
-        input_text=$(cat)
+        cat > "$input_file"
     else
         if [ -z "$custom_prompt" ]; then
+            rm -f "$input_file"
             show_help
             exit 0
         fi
-        input_text=""
+        : > "$input_file"  # Create empty file
     fi
+    
+    # Read input from file
+    input_text=$(cat "$input_file")
+    rm -f "$input_file"
     
     # Determine provider and model
     if [ -n "$ollama_model" ]; then
