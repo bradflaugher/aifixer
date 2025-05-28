@@ -233,67 +233,6 @@ find src -name "*.js" -exec sh -c 'cat {} | aifixer > {}.fixed && mv {}.fixed {}
 "command": "cat ${file} | aifixer > ${file}.fixed && mv ${file}.fixed ${file}"
 ```
 
-## 📊 Why Choose AIFixer?
-
-<table>
-<tr>
-  <th></th>
-  <th>AIFixer 🔧</th>
-  <th>GitHub Copilot</th>
-  <th>Cursor</th>
-  <th>Continue.dev</th>
-</tr>
-<tr>
-  <td><strong>Interface</strong></td>
-  <td>✅ CLI (Unix pipes)</td>
-  <td>❌ IDE only</td>
-  <td>❌ IDE only</td>
-  <td>❌ IDE only</td>
-</tr>
-<tr>
-  <td><strong>Dependencies</strong></td>
-  <td>✅ Just <code>jq</code></td>
-  <td>❌ IDE plugin</td>
-  <td>❌ Entire IDE</td>
-  <td>❌ IDE plugin</td>
-</tr>
-<tr>
-  <td><strong>Works Offline</strong></td>
-  <td>✅ Yes (Ollama)</td>
-  <td>❌ No</td>
-  <td>❌ No</td>
-  <td>✅ Yes</td>
-</tr>
-<tr>
-  <td><strong>Model Choice</strong></td>
-  <td>✅ 100+ models</td>
-  <td>❌ GPT only</td>
-  <td>❌ Limited</td>
-  <td>✅ Good selection</td>
-</tr>
-<tr>
-  <td><strong>Pricing</strong></td>
-  <td>✅ Pay-per-use</td>
-  <td>💸 $10-20/month</td>
-  <td>💸 $20/month</td>
-  <td>✅ Free (limited)</td>
-</tr>
-<tr>
-  <td><strong>Scriptable</strong></td>
-  <td>✅ Built for it</td>
-  <td>❌ No</td>
-  <td>❌ No</td>
-  <td>❌ Limited</td>
-</tr>
-</table>
-
-### 🎯 The Right Tool for the Right Job
-
-- **Quick fixes & automation**: AIFixer shines here - scriptable, fast, efficient
-- **Interactive development**: IDE tools are better for real-time suggestions
-- **Batch processing**: AIFixer is unmatched - process entire codebases with shell scripts
-- **Learning & exploration**: Use AIFixer to understand code by asking questions
-
 ## 🔧 Configuration
 
 ### Environment Variables
