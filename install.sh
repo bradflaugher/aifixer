@@ -12,7 +12,6 @@ set -e
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
-AIFIXER_VERSION="3.0.0"
 GITHUB_REPO="bradflaugher/aifixer"
 SCRIPT_NAME="aifixer.sh"
 COMMAND_NAME="aifixer"
