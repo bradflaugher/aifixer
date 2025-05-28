@@ -580,12 +580,9 @@ EOF
     echo "  ${BOLD}${CYAN}$COMMAND_NAME --help${RESET}"
     echo
     
-    # Remind about shell restart if needed
-    if ! command -v "$COMMAND_NAME" >/dev/null 2>&1; then
-        echo "${YELLOW}Note:${RESET} You may need to restart your shell or run:"
-        echo "  ${CYAN}source $(get_shell_config_file "$(detect_shell)")${RESET}"
-        echo
-    fi
+    echo "${YELLOW}Note:${RESET} You may need to restart your shell or run:"
+    echo "  ${CYAN}source $(get_shell_config_file "$(detect_shell)")${RESET}"
+    echo
 }
 
 # Run installer
