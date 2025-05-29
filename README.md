@@ -2,12 +2,6 @@
 
 **Fix your code with AI, right from your terminal**
 <p align="center">
-  <!-- GitHub README YouTube Thumbnail with Link -->
-  <a href="https://www.youtube.com/watch?v=lXaeMkBTvkw">
-    <img src="https://img.youtube.com/vi/lXaeMkBTvkw/maxresdefault.jpg" alt="AIFixer: Terminal Nightmare Solved" width="600">
-    <br><br>Watch The Ad On YouTube
-  </a>
-  <br><br>
   <img src="./logo.svg" alt="AIFixer" width="600">
   <br><br>
   <a href="https://github.com/bradflaugher/aifixer/actions"><img src="https://img.shields.io/github/actions/workflow/status/bradflaugher/aifixer/ci.yml?branch=main&style=flat-square" alt="Build Status"></a>
@@ -304,6 +298,15 @@ GPLv3 License - see [LICENSE](LICENSE) for details.
 - Inspired by Unix philosophy
 
 ---
+
+## YouTube Ad
+
+<p align="center">
+<a href="https://www.youtube.com/watch?v=lXaeMkBTvkw">
+  <img src="https://img.youtube.com/vi/lXaeMkBTvkw/maxresdefault.jpg" alt="AIFixer: Terminal Nightmare Solved" width="600">
+  <br><br>Watch On YouTube
+</a>
+</p>
 
 <p align="center">
   Made with ❤️ by developers who love the command line
