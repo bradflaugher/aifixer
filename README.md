@@ -302,8 +302,8 @@ GPLv3 License - see [LICENSE](LICENSE) for details.
 ## YouTube Ad
 
 <a href="https://www.youtube.com/watch?v=lXaeMkBTvkw">
+  Watch On Youtube <br><br>
   <img src="https://img.youtube.com/vi/lXaeMkBTvkw/maxresdefault.jpg" alt="AIFixer: Terminal Nightmare Solved" width="600">
-  <br><br>Watch On YouTube
 </a>
 
 <p align="center">
