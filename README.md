@@ -207,8 +207,8 @@ cat style.css | aifixer -m google/gemini-flash-1.5 -p "fix formatting"
 Perfect for sensitive code or when you're offline:
 
 ```sh
-# Install Ollama (if not already installed)
-curl -fsSL https://ollama.ai/install.sh | sh
+# Install Ollama (if not already installed), see https://ollama.com/download/linux
+curl -fsSL https://ollama.com/install.sh | sh
 
 # Pull a coding model
 ollama pull codellama
