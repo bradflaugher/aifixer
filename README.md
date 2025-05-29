@@ -1,8 +1,11 @@
 # 🔧 AIFixer
 
 **Fix your code with AI, right from your terminal**
-
 <p align="center">
+  <a href="https://www.youtube.com/watch?v=lXaeMkBTvkw">
+  <img src="img.youtube.com/vi/ID/hqdefault.jpg" alt="Watch the Video">
+  </a>
+  <br><br>
   <img src="./logo.svg" alt="AIFixer" width="600">
   <br><br>
   <a href="https://github.com/bradflaugher/aifixer/actions"><img src="https://img.shields.io/github/actions/workflow/status/bradflaugher/aifixer/ci.yml?branch=main&style=flat-square" alt="Build Status"></a>
