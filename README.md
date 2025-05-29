@@ -297,13 +297,13 @@ GPLv3 License - see [LICENSE](LICENSE) for details.
 - Local AI powered by [Ollama](https://ollama.ai)
 - Inspired by Unix philosophy
 
----
-
 ## [YouTube Ad](https://www.youtube.com/watch?v=lXaeMkBTvkw)
 
 <a href="https://www.youtube.com/watch?v=lXaeMkBTvkw">
   <img src="https://img.youtube.com/vi/lXaeMkBTvkw/maxresdefault.jpg" alt="AIFixer: Terminal Nightmare Solved" width="400">
 </a>
+
+---
 
 <p align="center">
   Made with ❤️ by developers who love the command line
