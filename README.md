@@ -2,8 +2,9 @@
 
 **Fix your code with AI, right from your terminal**
 <p align="center">
+  <!-- GitHub README YouTube Thumbnail with Link -->
   <a href="https://www.youtube.com/watch?v=lXaeMkBTvkw">
-  <img src="img.youtube.com/vi/ID/hqdefault.jpg" alt="Watch the Video">
+    <img src="https://img.youtube.com/vi/lXaeMkBTvkw/maxresdefault.jpg" alt="AIFixer: Terminal Nightmare Solved" width="600">
   </a>
   <br><br>
   <img src="./logo.svg" alt="AIFixer" width="600">
