@@ -5,7 +5,7 @@
   <!-- GitHub README YouTube Thumbnail with Link -->
   <a href="https://www.youtube.com/watch?v=lXaeMkBTvkw">
     <img src="https://img.youtube.com/vi/lXaeMkBTvkw/maxresdefault.jpg" alt="AIFixer: Terminal Nightmare Solved" width="600">
-    Watch The Ad On YouTube
+    <br><br>Watch The Ad On YouTube
   </a>
   <br><br>
   <img src="./logo.svg" alt="AIFixer" width="600">
