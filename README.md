@@ -185,7 +185,7 @@ cat calculator.js | aifixer -p "write unit tests for this" > calculator.test.js
 
 ### Choose Your AI Model
 
-AIFixer supports 100+ models through OpenRouter. Pick the right tool for the job:
+AIFixer supports 300+ models through OpenRouter. See the full list at [openrouter.ai](https://openrouter.ai/models). Pick the right tool for the job:
 
 ```sh
 # List all available models
