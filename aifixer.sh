@@ -9,7 +9,7 @@ OLLAMA_URL="http://localhost:11434/api"
 REQUEST_TIMEOUT=60
 
 # Default values
-MODEL="${AIFIXER_MODEL:-anthropic/claude-3.5-sonnet}"
+MODEL="${AIFIXER_MODEL:-anthropic/claude-sonnet-4}"
 PROMPT="Fix the TODOs in the file below and output the full file: "
 
 # ─── Core Functions ───────────────────────────────────────────────────────────
